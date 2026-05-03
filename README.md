@@ -72,6 +72,38 @@ tsr rank                 # rank new calls (Phase 5, not yet implemented)
 
 A typical end-to-end run is `ingest → extract → backtest → score`.
 
+## Tracked creators
+
+14 active YouTube channels right now. The list is curated for *falsifiable swing-trade calls* — channels that regularly issue ticker + direction + ideally a price level — rather than popularity. Mix of small (~20k subs) and mid (~500k+) channels.
+
+The current set: Adam Mancini, The Trade Risk, TraderLion, Alphatrends, Bulls on Wall Street, Qullamaggie, Oliver Velez Trading, Stock Market Mentor, Stockbee, Richard Moglen, ShadowTrader, Leavitt Brothers, IBD Videos, T3 Live.
+
+Full config with notes per creator: [configs/creators.yaml](configs/creators.yaml).
+
+## Daily cron
+
+The pipeline is designed to run unattended. There's a wrapper script and a launchd job that runs `ingest → extract → backtest → score` once a day:
+
+```bash
+# install the launchd job (macOS)
+cp scripts/com.jaspervalk.tsr.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.jaspervalk.tsr.daily.plist
+
+# trigger immediately to verify
+launchctl start com.jaspervalk.tsr.daily
+
+# tail the log
+tail -f data/logs/cron.log
+```
+
+Default schedule is 06:30 local time — three hours before the US market opens, which gives Whisper enough headroom to finish transcribing overnight uploads. `INGEST_LIMIT` and `EXTRACT_LIMIT` in `scripts/daily_run.sh` keep daily runs bounded; pass `--catch-up` for a wider one-off backfill.
+
+On Linux, the same script works with cron:
+
+```cron
+30 6 * * * /path/to/trading-signal-research/scripts/daily_run.sh
+```
+
 ## Ingestion in detail
 
 Two layers, each with a fallback:

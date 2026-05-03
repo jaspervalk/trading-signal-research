@@ -103,10 +103,94 @@ creators:
       Heavy course/membership promo; testimonial-heavy videos should be filtered
       via title heuristics during ingestion.
 
+  # ----- Phase 6 expansion: 7 additional creators added 2026-05-03 -----
+  # Resolved each handle via YouTube Data API; using UC IDs for stability.
+
+  - display_name: "Stock Market Mentor"
+    source_type: youtube
+    external_id: "UCkvnZJf08NVB6CaV4Ys-YPg"
+    handle: "@StockMarketMentor"
+    url: "https://www.youtube.com/@StockMarketMentor"
+    active: true
+    notes: |
+      Dan Fitzpatrick. Long-form Strategy Sessions Mon-Thu plus a Weekend
+      Update. Specific entries / stops / partials documented. CNBC regular,
+      so some content leans commentary; deeper alerts are paywalled.
+
+  - display_name: "Stockbee"
+    source_type: youtube
+    external_id: "UCokSy9UkcPDCYyrU5_6835w"
+    handle: "@stockbee"
+    url: "https://www.youtube.com/@stockbee"
+    active: true
+    notes: |
+      Pradeep Bonde. Momentum-burst swing setups (3-5 day holds, 8-20% targets).
+      Channel cadence is sporadic — strongest content is on his blog. Useful
+      as a low-volume but focused signal source.
+
+  - display_name: "Richard Moglen"
+    source_type: youtube
+    external_id: "UCYqMAKiU3tFijWnyqAxG4Cg"
+    handle: "@RichardMoglen"
+    url: "https://www.youtube.com/@RichardMoglen"
+    active: true
+    notes: |
+      Weekly Stock Market Outlook + interviews with growth/momentum traders.
+      Tied to the TraderLion ecosystem. Filter for the "Outlook" series — the
+      interview episodes are educational rather than directional.
+
+  - display_name: "ShadowTrader"
+    source_type: youtube
+    external_id: "UCV00elXN8Z0vrFIAZu3rIKw"
+    handle: "@ShadowTrader"
+    url: "https://www.youtube.com/channel/UCV00elXN8Z0vrFIAZu3rIKw"
+    active: true
+    notes: |
+      Peter Reznicek. Weekend Edition reviews indices and sectors and previews
+      next-week trade ideas. Often index/sector level rather than single-name —
+      verify ticker density per video before scoring heavily.
+
+  - display_name: "Leavitt Brothers"
+    source_type: youtube
+    external_id: "UCFDNcstsXmh6YMihMuRYZVA"
+    handle: "@leavittbrothers"
+    url: "https://www.youtube.com/@leavittbrothers"
+    active: true
+    notes: |
+      Jason Leavitt. Trend-following equity swing trading, multi-day to
+      multi-week holds. State of the Market + Trading Ideas updates. Free
+      cadence is irregular; deeper service is paid.
+
+  - display_name: "IBD Videos"
+    source_type: youtube
+    external_id: "UC2w7fC_pE5n6-rlUko9TotA"
+    handle: "@IBDvideos"
+    url: "https://www.youtube.com/@IBDvideos"
+    active: true
+    notes: |
+      Investor's Business Daily. CAN SLIM growth-stock swing/position trading
+      with named pivot points and buy zones. Multi-host (David Ryan, Roppel,
+      Minervini guests) — call attribution is messier than single-creator
+      channels. Highest signal density of any institutional source.
+
+  - display_name: "T3 Live"
+    source_type: youtube
+    external_id: "UCBj1BiYgmUJWdzqLhfInpJg"
+    handle: "@t3live"
+    url: "https://www.youtube.com/@t3live"
+    active: true
+    notes: |
+      Scott Redler's Morning Call + Sami Abusaad's Strategic Swing Trader.
+      Daily morning videos are short (~3-8 min) — borderline for our segment
+      threshold; weekly Sami previews are the higher-value content.
+
 # Deliberately excluded after research:
 #   - StockChartsTV sub-shows (MEM Edge, Bowley): require per-video title routing
 #     to attribute to a specific creator; revisit in Phase 1b.
-#   - Investors Underground / Mish / Velez heavily paywalled or promo-skewed
-#     (Velez kept above with an explicit caveat).
+#   - Harry Boxer / The Tech Trader: handle wouldn't resolve via Data API;
+#     find the correct @handle / channel ID and reconsider.
+#   - Investors Underground / Mish: heavily paywalled or promo-skewed.
+#   - Anne-Marie Baiynd: mixed equities + options, complicates evaluation.
+#   - Jim Roppel: monthly cadence too low; covered indirectly via IBD Videos.
 #   - ZipTrader, Ricky Gutierrez, Stock Moe, Joseph Carlson, Tim Sykes:
 #     fail "issues specific falsifiable swing-trade calls" criterion.

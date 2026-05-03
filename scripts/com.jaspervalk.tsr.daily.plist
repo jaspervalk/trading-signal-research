@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the daily trading-signal-research pipeline run.
+
+  Install:
+    cp scripts/com.jaspervalk.tsr.daily.plist ~/Library/LaunchAgents/
+    # edit the absolute paths below if your repo isn't at the location listed
+    launchctl load ~/Library/LaunchAgents/com.jaspervalk.tsr.daily.plist
+
+  Trigger immediately to verify:
+    launchctl start com.jaspervalk.tsr.daily
+
+  Tail the log:
+    tail -f data/logs/cron.log
+
+  Disable:
+    launchctl unload ~/Library/LaunchAgents/com.jaspervalk.tsr.daily.plist
+
+  Schedule: 06:30 local time daily. The market opens at 09:30 ET, so a
+  06:30 run gives Whisper transcription enough headroom to finish before
+  the market wakes up.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jaspervalk.tsr.daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jaspervalk/Documents/projects/trading-signal-research/scripts/daily_run.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jaspervalk/Documents/projects/trading-signal-research</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- If the Mac was asleep at the scheduled time, run as soon as it wakes. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Don't relaunch on exit. The schedule fires once per day. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Capture stdout/stderr at the launchd layer too, in case the
+         script itself fails before its own logging takes over. -->
+    <key>StandardOutPath</key>
+    <string>/Users/jaspervalk/Documents/projects/trading-signal-research/data/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jaspervalk/Documents/projects/trading-signal-research/data/logs/launchd.err.log</string>
+
+    <!-- Inherit a clean PATH so the script can find brew tools (ffmpeg). -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
