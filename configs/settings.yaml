@@ -1,0 +1,42 @@
+# Project-wide tunables. Read by app.config.
+
+# Transcript ingestion (Phase 1b polish — see ADR 0004)
+transcript:
+  # Seconds to wait between consecutive video metadata + transcript fetches.
+  # Reduces YouTube rate-limit / IP-block risk. Add small jitter on top.
+  fetch_delay_seconds: 2.5
+  fetch_jitter_seconds: 1.0
+
+  # Whisper fallback when youtube-transcript-api fails (IpBlocked, missing).
+  # Backends: 'none' (skip), 'faster_whisper' (local), 'openai_api' (cloud).
+  # 'faster_whisper' requires `pip install -e ".[whisper]"` and ffmpeg on PATH.
+  whisper_backend: faster_whisper
+  whisper_model: base.en        # tiny.en | base.en | small.en | medium.en
+  whisper_device: cpu           # cpu | cuda
+  whisper_compute_type: int8    # int8 (fast on cpu) | float16 | float32
+  audio_cache_dir: data/cache/audio
+
+# Backtest assumptions
+backtest:
+  primary_horizon: 5d
+  horizons: [1d, 3d, 5d, 21d]
+  round_trip_cost_bps: 10
+  trigger_window_days: 10        # how long after posted_at a trigger can fire
+  market_calendar: XNYS
+
+# Extraction
+extraction:
+  min_final_confidence: 0.5
+  llm_context_seconds_before: 90
+  llm_context_seconds_after: 90
+  extractor_version: "v0.1"
+
+# Universe
+universe:
+  ticker_csv_path: configs/universe.csv
+  enforce_membership: true
+
+# Scoring windows
+scoring:
+  windows: [all, 365d, 90d]
+  min_n_for_scoring: 5

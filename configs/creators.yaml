@@ -1,0 +1,112 @@
+# Tracked creators for ingestion. Phase 1: YouTube only.
+#
+# `external_id` for YouTube can be either a UC... channel ID or a @handle.
+# yt-dlp resolves both. UC... is more stable across rebrands, so we'll
+# upgrade these to UC IDs after the first successful ingest run resolves them.
+#
+# `notes` is for project-internal context only. It is not used by the pipeline
+# beyond being persisted on the Creator row.
+#
+# Curation criteria (see docs/architecture.md):
+#   - Issues *specific* swing-trade calls (ticker + direction + ideally a level).
+#   - Regular cadence (≥ weekly).
+#   - English transcripts available.
+#   - Independent voice; not a CNBC-style aggregator.
+
+creators:
+  - display_name: "Adam Mancini"
+    source_type: youtube
+    external_id: "@AdamMancini4"
+    handle: "@AdamMancini4"
+    url: "https://www.youtube.com/@AdamMancini4"
+    active: true
+    notes: |
+      Daily SPX/ES levels-based plan plus 2–7 day ETF swing trades. Highly falsifiable
+      by design (recapture / failed-breakdown triggers, explicit invalidation). Most
+      detailed plans are on Substack/X — YouTube content captures the headline calls.
+
+  - display_name: "The Trade Risk"
+    source_type: youtube
+    external_id: "@traderisk"
+    handle: "@traderisk"
+    url: "https://www.youtube.com/@traderisk"
+    active: true
+    notes: |
+      Weekly "Stock Market Weekly" plus rules-based swing system. Curated TR150
+      watchlist with named leadership stocks. Some specific signals are paywalled;
+      YouTube content skews to weekly recap.
+
+  - display_name: "TraderLion"
+    source_type: youtube
+    external_id: "@TraderLion"
+    handle: "@TraderLion"
+    url: "https://www.youtube.com/@TraderLion"
+    active: true
+    notes: |
+      Growth/momentum hub featuring multiple traders (Oliver Kell, Leif Soreide,
+      Anthony Shi). "Stocks in focus" / setups-of-the-week with named tickers and
+      pivot levels in the Minervini/Qullamaggie tradition.
+
+  - display_name: "Alphatrends"
+    source_type: youtube
+    external_id: "@alphatrends"
+    handle: "@alphatrends"
+    url: "https://www.youtube.com/@alphatrends"
+    active: true
+    notes: |
+      Brian Shannon — daily end-of-day technical recap + VWAP-based swing setups.
+      30+ year track record. Calls are often conditional ("if it holds X") so the
+      extractor must handle trigger semantics carefully.
+
+  - display_name: "Patrick Walker (Mission Winners)"
+    source_type: youtube
+    external_id: "@PatrickWalker56"
+    handle: "@PatrickWalker56"
+    url: "https://www.youtube.com/@PatrickWalker56"
+    active: false
+    notes: |
+      Long-tenured swing trader; price/volume breakouts on individual stocks.
+      DISABLED: handle returned 404 on first ingest. Verify the correct
+      @handle / channel ID and re-enable. Candidate for a manual lookup —
+      he often guests on @traderisk.
+
+  - display_name: "Bulls on Wall Street"
+    source_type: youtube
+    external_id: "@kunaldesaitrading"
+    handle: "@kunaldesaitrading"
+    url: "https://www.youtube.com/@kunaldesaitrading"
+    active: true
+    notes: |
+      Kunal Desai. Daily watchlists / game plans, mix of day + swing.
+      Promotional bias (sells a bootcamp). Filter day-trade calls out via timeframe
+      tagging in extraction.
+
+  - display_name: "Qullamaggie"
+    source_type: youtube
+    external_id: "@Qullamaggie"
+    handle: "@Qullamaggie"
+    url: "https://www.youtube.com/@Qullamaggie"
+    active: true
+    notes: |
+      Kristjan Kullamägi. Episodic-pivot and breakout swing trading on momentum
+      leaders. Cadence is irregular; sample size will be smaller than peers — useful
+      as a sanity check on momentum-style scoring.
+
+  - display_name: "Oliver Velez Trading"
+    source_type: youtube
+    external_id: "@OliverVelezTrading"
+    handle: "@OliverVelezTrading"
+    url: "https://www.youtube.com/@OliverVelezTrading"
+    active: true
+    notes: |
+      Pristine method, explicit entry/stop/target rules on named large-caps.
+      Heavy course/membership promo; testimonial-heavy videos should be filtered
+      via title heuristics during ingestion.
+
+# Deliberately excluded after research:
+#   - StockChartsTV sub-shows (MEM Edge, Bowley): require per-video title routing
+#     to attribute to a specific creator; revisit in Phase 1b.
+#   - Investors Underground / Mish / Velez heavily paywalled or promo-skewed
+#     (Velez kept above with an explicit caveat).
+#   - ZipTrader, Ricky Gutierrez, Stock Moe, Joseph Carlson, Tim Sykes:
+#     fail "issues specific falsifiable swing-trade calls" criterion.

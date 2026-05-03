@@ -1,0 +1,99 @@
+[project]
+name = "trading-signal-research"
+version = "0.1.0"
+description = "Research pipeline that ingests trader content, extracts structured trade calls, backtests them, and scores creator reliability."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Jasper Valk", email = "jaspermvalk@gmail.com" }]
+
+dependencies = [
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "typer>=0.12",
+    "structlog>=24.1",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "yt-dlp>=2024.4.9",
+    "youtube-transcript-api>=0.6.2",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "yfinance>=0.2.40",
+    "pandas-market-calendars>=4.4",
+    "anthropic>=0.30",
+    "httpx>=0.27",
+    "tenacity>=8.2",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+dev = [
+    "pytest>=8.1",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "ipykernel>=6.29",
+    "jupyter>=1.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+]
+modeling = [
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+    "shap>=0.45",
+]
+# Whisper fallback for when youtube-transcript-api gets IP-blocked or returns
+# no captions. Local backend uses faster-whisper (CPU OK with int8). Cloud
+# backend uses the OpenAI Whisper API. ffmpeg must be on PATH for either.
+whisper = [
+    "faster-whisper>=1.0",
+    "openai>=1.30",
+]
+
+[project.scripts]
+tsr = "app.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF"]
+ignore = ["PLR0913", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "yfinance.*",
+    "yt_dlp.*",
+    "youtube_transcript_api.*",
+    "pandas_market_calendars.*",
+    "faster_whisper.*",
+    "openai.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["src"]
