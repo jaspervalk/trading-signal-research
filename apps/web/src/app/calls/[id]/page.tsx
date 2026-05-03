@@ -9,6 +9,7 @@ import { ReviewActions } from "@/components/ReviewActions";
 import { Annotations } from "@/components/Annotations";
 import { Tags } from "@/components/Tags";
 import { WatchlistButton } from "@/components/WatchlistButton";
+import { PromoteToGoldButton } from "@/components/PromoteToGoldButton";
 import { api } from "@/lib/api";
 import { cn, fmtDateTime, fmtPct, pctColor, statusColor } from "@/lib/utils";
 
@@ -158,6 +159,11 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
           <Card>
             <CardHeader title="Notes" />
             <Annotations entityType="call" entityId={String(c.id)} />
+          </Card>
+
+          <Card>
+            <CardHeader title="Gold set" subtitle="Use this call as an extractor test case." />
+            <PromoteToGoldButton call={c} />
           </Card>
         </div>
       </div>

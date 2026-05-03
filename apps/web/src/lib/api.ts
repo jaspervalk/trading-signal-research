@@ -199,6 +199,33 @@ export type WatchlistEntry = {
   pinned_at: string;
 };
 
+export type Bar = {
+  time: number;     // unix seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type TickerCall = {
+  call_id: number;
+  posted_at: string;
+  time: number;     // unix seconds
+  direction: string;
+  entry_type: string;
+  entry_price: number | null;
+  target_price: number | null;
+  stop_price: number | null;
+  final_confidence: number;
+  status: string;
+  creator_id: number;
+  creator_name: string;
+  doc_title: string | null;
+  return_5d: number | null;
+  activated: boolean | null;
+};
+
 export type GoldLabel = {
   id: number;
   source_key: string;
@@ -267,6 +294,9 @@ export const api = {
       by_direction: Record<string, number>;
       by_outcome: Record<string, number>;
     }>(`/tickers/${ticker}`),
+    bars: (ticker: string, days = 180) =>
+      request<{ ticker: string; bars: Bar[] }>(`/tickers/${ticker}/bars?days=${days}`),
+    calls: (ticker: string) => request<TickerCall[]>(`/tickers/${ticker}/calls`),
   },
   annotations: {
     list: (entity_type: string, entity_id: string) =>
