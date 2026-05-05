@@ -424,6 +424,199 @@ class CreatorScorecard(Base):
         )
 
 
+# --- Phase 2 extension (per ADR 0006): claims ------------------------------
+
+
+# Claim type taxonomy (per ADR 0006). Orthogonal to claim_class.
+CLAIM_TYPE_CATALYST = "catalyst"               # specific positive thesis
+CLAIM_TYPE_RISK = "risk"                       # concrete downside thesis
+CLAIM_TYPE_EARNINGS_VIEW = "earnings_view"     # directional view on a print
+CLAIM_TYPE_MACRO_THEME = "macro_theme"         # broad regime claim; ticker may be null
+CLAIM_TYPE_SECTOR_VIEW = "sector_view"         # sector/industry-level directional view
+CLAIM_TYPE_FACTUAL_ASSERTION = "factual_assertion"  # checkable factual statement
+CLAIM_TYPE_OPINION = "opinion"                 # non-falsifiable preference
+CLAIM_TYPE_SPECULATION = "speculation"         # directional guess without evidence
+CLAIM_TYPE_HYPE = "hype"                       # promotional/emotional, no thesis
+
+# Polarity
+CLAIM_POLARITY_BULLISH = "bullish"
+CLAIM_POLARITY_BEARISH = "bearish"
+CLAIM_POLARITY_NEUTRAL = "neutral"
+CLAIM_POLARITY_MIXED = "mixed"
+
+# Claim class — orthogonal to claim_type, drives credibility weighting.
+CLAIM_CLASS_FACTUAL = "factual"
+CLAIM_CLASS_OPINION = "opinion"
+CLAIM_CLASS_SPECULATION = "speculation"
+CLAIM_CLASS_HYPE = "hype"
+
+# Status mirrors ExtractedCall.
+CLAIM_STATUS_PENDING = "pending"
+CLAIM_STATUS_ACCEPTED = "accepted"
+CLAIM_STATUS_PENDING_REVIEW = "pending_review"
+CLAIM_STATUS_REJECTED = "rejected"
+
+# Resolution outcomes (populated only when the claim is verifiable).
+CLAIM_RESOLUTION_CORRECT = "correct"
+CLAIM_RESOLUTION_WRONG = "wrong"
+CLAIM_RESOLUTION_PARTIAL = "partial"
+CLAIM_RESOLUTION_UNVERIFIABLE = "unverifiable"
+
+
+class Claim(Base):
+    """A non-trade-call claim extracted from a Document via the hybrid pipeline.
+
+    Sibling of ExtractedCall: a single source segment can produce a call AND/OR
+    several claims. Claims may be ticker-less (sector/macro). Every claim
+    carries a verbatim evidence_quote and an explicit claim_class.
+
+    See ADR 0006 for the schema rationale and the resolution model.
+    """
+
+    __tablename__ = "claims"
+    __table_args__ = (
+        Index("ix_claims_doc_ticker", "document_id", "ticker"),
+        Index("ix_claims_status_conf", "status", "final_confidence"),
+        Index("ix_claims_type_polarity", "claim_type", "polarity"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    primary_segment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transcript_segments.id")
+    )
+
+    # The claim itself
+    claim_type: Mapped[str] = mapped_column(String(32), index=True)
+    ticker: Mapped[str | None] = mapped_column(String(16))
+    sector: Mapped[str | None] = mapped_column(String(64))
+    polarity: Mapped[str] = mapped_column(String(16))
+    claim_class: Mapped[str] = mapped_column(String(16))
+
+    # Text + evidence
+    summary: Mapped[str] = mapped_column(Text)
+    evidence_quote: Mapped[str] = mapped_column(Text)
+    context_text: Mapped[str | None] = mapped_column(Text)
+    context_start_seconds: Mapped[float | None] = mapped_column(Float)
+    context_end_seconds: Mapped[float | None] = mapped_column(Float)
+
+    # Resolution (populated by a separate pipeline; deferred per ADR 0006)
+    resolution_target_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_outcome: Mapped[str | None] = mapped_column(String(32))
+    resolution_notes: Mapped[str | None] = mapped_column(Text)
+
+    # Provenance + confidence
+    extracted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+    extractor_version: Mapped[str] = mapped_column(String(32))
+    llm_confidence: Mapped[float | None] = mapped_column(Float)
+    rule_confidence: Mapped[float | None] = mapped_column(Float)
+    final_confidence: Mapped[float] = mapped_column(Float, default=0.0, index=True)
+    status: Mapped[str] = mapped_column(
+        String(32), default=CLAIM_STATUS_PENDING, index=True
+    )
+    validator_notes: Mapped[str | None] = mapped_column(Text)
+
+    # Manual review (mirrors ExtractedCall)
+    manual_status: Mapped[str] = mapped_column(
+        String(32), default="unreviewed", index=True
+    )
+    manual_notes: Mapped[str | None] = mapped_column(Text)
+    manual_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    document: Mapped[Document] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<Claim {self.id} {self.claim_type} ticker={self.ticker} "
+            f"polarity={self.polarity} class={self.claim_class} "
+            f"conf={self.final_confidence:.2f} status={self.status}>"
+        )
+
+
+# --- Slice D (per ADR 0006): TickerSignal aggregation ---------------------
+
+
+# Signal type taxonomy (per ADR 0006). A row's signal_type determines which
+# input rows feed the aggregate.
+SIGNAL_TYPE_TRADE_CALLS = "trade_calls"            # ExtractedCall only
+SIGNAL_TYPE_CLAIMS_ALL = "claims_all"              # all accepted Claim rows
+SIGNAL_TYPE_CLAIMS_FACTUAL = "claims_factual"      # claim_class='factual' only
+SIGNAL_TYPE_CREATOR_CONSENSUS = "creator_consensus"  # high-credibility creators only
+
+# Window sizes. These align with backtest horizons but live separately so
+# signal windows can evolve without touching backtest assumptions.
+SIGNAL_WINDOW_1D = "1d"
+SIGNAL_WINDOW_7D = "7d"
+SIGNAL_WINDOW_30D = "30d"
+
+
+class TickerSignal(Base):
+    """Pre-aggregated signal features for one (ticker, window_end, window_size, signal_type).
+
+    Read primitive for the dashboard's ticker page and feature shape for ML
+    later. Idempotent: a single row per natural key; recomputation upserts.
+
+    See ADR 0006 §"TickerSignal (new aggregation entity)" for the schema and
+    §"Aggregation policy" for the recompute contract.
+    """
+
+    __tablename__ = "ticker_signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "ticker", "window_end", "window_size", "signal_type",
+            name="uq_ticker_signal_natural_key",
+        ),
+        Index("ix_ticker_signal_lookup", "ticker", "window_end"),
+        Index("ix_ticker_signal_type_window", "signal_type", "window_size"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    window_size: Mapped[str] = mapped_column(String(8))   # '1d' | '7d' | '30d'
+    signal_type: Mapped[str] = mapped_column(String(32))
+
+    # Counts
+    n_mentions: Mapped[int] = mapped_column(Integer, default=0)
+    n_distinct_creators: Mapped[int] = mapped_column(Integer, default=0)
+    n_documents: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Polarity (computed only for signal types where it's meaningful)
+    net_polarity: Mapped[float | None] = mapped_column(Float)
+    credibility_weighted_polarity: Mapped[float | None] = mapped_column(Float)
+
+    # Trade-call specifics (signal_type='trade_calls' only)
+    avg_entry_distance_pct: Mapped[float | None] = mapped_column(Float)
+    avg_target_distance_pct: Mapped[float | None] = mapped_column(Float)
+    avg_stop_distance_pct: Mapped[float | None] = mapped_column(Float)
+
+    # Claim-class mix (signal_type='claims_*' only)
+    n_factual: Mapped[int] = mapped_column(Integer, default=0)
+    n_opinion: Mapped[int] = mapped_column(Integer, default=0)
+    n_speculation: Mapped[int] = mapped_column(Integer, default=0)
+    n_hype: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Provenance
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+    aggregator_version: Mapped[str] = mapped_column(String(32))
+
+    def __repr__(self) -> str:
+        return (
+            f"<TickerSignal {self.ticker} {self.signal_type} "
+            f"{self.window_size}@{self.window_end:%Y-%m-%d} "
+            f"n={self.n_mentions} pol={self.net_polarity}>"
+        )
+
+
 # --- Phase 6: research workbench entities ---------------------------------
 
 # Polymorphic entity_type for Annotation / Tag / Watchlist

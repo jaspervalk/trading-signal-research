@@ -36,7 +36,11 @@ fi
 
 INGEST_LIMIT=10
 EXTRACT_LIMIT=30
-EXTRACT_MIN_SEGMENTS=50
+# Lowered from 50 (2026-05-05): short videos (Adam Mancini's daily SPX levels,
+# IBD's per-stock segments) are deliberately compact and still carry useful
+# tickers + technicals. The extractor's prefilter rejects no-signal segments
+# anyway, so the cost of letting short videos through is a few extra LLM calls.
+EXTRACT_MIN_SEGMENTS=10
 
 if [[ "${1:-}" == "--catch-up" ]]; then
     INGEST_LIMIT=50

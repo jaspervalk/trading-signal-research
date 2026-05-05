@@ -1,15 +1,14 @@
-"""Rule-based validator for LLM-extracted calls.
+"""Rule-based validator for LLM-extracted calls and claims.
 
 Runs after the pydantic schema check. Catches issues the schema can't:
   - hallucinated tickers (not in our universe)
   - evidence quotes that don't actually appear in the source
-  - implausible prices vs. the universe / context
+  - implausible prices vs. the universe / context (calls only)
+  - hedged language inappropriately classified as 'factual' (claims only)
 
-Returns a `ValidationResult` carrying:
-  - `accepted_call`: a possibly-modified copy of the LLM call with bad
-    fields nulled out, OR None if the call should be rejected wholesale.
-  - `failures`: list of human-readable reasons.
-  - `rule_confidence`: derived from how many checks passed.
+Returns a `ValidationResult` (calls) or `ClaimValidationResult` (claims),
+carrying the possibly-modified accepted output, failures, warnings, and a
+rule_confidence in [0, 1].
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from app.extract.schemas import LLMExtractedCall
+from app.extract.schemas import LLMExtractedCall, LLMExtractedClaim
 from app.normalize.tickers import Universe
 
 
@@ -151,4 +150,116 @@ def validate(
         warnings=warnings,
         rule_confidence=rule_conf,
         nulled_fields=nulled,
+    )
+
+
+# --- Claims (ADR 0006) -----------------------------------------------------
+
+
+# Hedging words/phrases that disqualify claim_class='factual' per ADR 0006 §6.
+# Matched as whole words; deliberately conservative to avoid false flags on
+# legitimate factual statements that happen to contain these tokens elsewhere.
+_HEDGE_PATTERN = re.compile(
+    r"\b("
+    r"i\s+think|i\s+believe|i\s+feel|i\s+suspect|"
+    r"could|might|may(?:be)?|"
+    r"probably|possibly|likely|unlikely|"
+    r"seems(?:\s+to)?|appears(?:\s+to)?|"
+    r"should|would|"
+    r"in\s+my\s+(?:view|opinion)|"
+    r"my\s+guess"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class ClaimValidationResult:
+    """Outcome of validating a single LLMExtractedClaim.
+
+    `accepted_claim` is a possibly-modified copy of the input (e.g. with
+    claim_class downgraded from 'factual' to 'opinion' when hedging is
+    detected) or None if the claim should be rejected outright.
+    """
+
+    accepted_claim: LLMExtractedClaim | None
+    failures: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    rule_confidence: float = 0.0
+    downgraded_class: bool = False
+
+
+def _evidence_contains_hedge(quote: str) -> bool:
+    return bool(_HEDGE_PATTERN.search(quote))
+
+
+def validate_claim(
+    claim: LLMExtractedClaim,
+    *,
+    source_text: str,
+    universe: Universe,
+) -> ClaimValidationResult:
+    """Apply rule checks to an LLM-extracted claim.
+
+    Hard rejects (return accepted_claim=None):
+      - evidence_quote not present in source text.
+      - ticker is set but not in the universe.
+
+    Soft fixes (mutate the claim, return accepted_claim with notes):
+      - claim_class='factual' when evidence contains hedging language → downgrade
+        to 'opinion'.
+      - sector set but ticker also set: keep both (no fix needed); they're
+        compatible (e.g., NVDA in semiconductors).
+    """
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    # 1. Evidence quote MUST appear in source. No exceptions for claims —
+    #    unlike calls, claims have no other evidence anchor.
+    if not _quote_appears_in_source(claim.evidence_quote, source_text):
+        failures.append("claim_evidence_not_in_source")
+        return ClaimValidationResult(
+            accepted_claim=None,
+            failures=failures,
+            warnings=warnings,
+            rule_confidence=0.0,
+        )
+
+    # 2. Ticker must be in universe when set. Sector-only claims (ticker=null)
+    #    are allowed for macro_theme / sector_view.
+    if claim.ticker is not None and not universe.has(claim.ticker):
+        failures.append(f"claim_ticker_not_in_universe: {claim.ticker!r}")
+        return ClaimValidationResult(
+            accepted_claim=None,
+            failures=failures,
+            warnings=warnings,
+            rule_confidence=0.0,
+        )
+
+    # 3. Hedge-aware class downgrade. The LLM's prompt forbids 'factual' with
+    #    hedges, but we enforce it here as defense in depth.
+    updates: dict[str, object] = {}
+    downgraded = False
+    if claim.claim_class == "factual" and _evidence_contains_hedge(claim.evidence_quote):
+        updates["claim_class"] = "opinion"
+        downgraded = True
+        warnings.append(
+            "claim_class downgraded from 'factual' to 'opinion' "
+            "(evidence contains hedging language)"
+        )
+
+    accepted = claim.model_copy(update=updates) if updates else claim
+
+    # Confidence: 1.0 baseline, minus 0.20 for a class downgrade, minus 0.10
+    # per other warning. The downgrade is a stronger signal than a generic
+    # warning because it means the LLM mis-classified.
+    rule_conf = 1.0 - (0.20 if downgraded else 0.0) - 0.10 * (len(warnings) - (1 if downgraded else 0))
+    rule_conf = max(0.0, min(1.0, rule_conf))
+
+    return ClaimValidationResult(
+        accepted_claim=accepted,
+        failures=failures,
+        warnings=warnings,
+        rule_confidence=rule_conf,
+        downgraded_class=downgraded,
     )

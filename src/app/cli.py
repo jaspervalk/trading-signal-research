@@ -41,10 +41,11 @@ def ingest(
 def extract(
     limit: int = typer.Option(0, help="Limit number of Documents processed (0 = no limit)."),
     min_segments: int = typer.Option(
-        50,
+        10,
         help=(
             "Skip documents with fewer than this many transcript segments. "
-            "Defaults to 50 to skip empty/very-short videos that produce no useful candidates."
+            "Defaults to 10 — short daily videos (Adam Mancini, IBD per-stock clips) "
+            "still carry useful tickers and the prefilter handles no-signal segments."
         ),
     ),
     one_pass: bool = typer.Option(

@@ -2,29 +2,33 @@
 
 For each Document not yet processed:
   1. Load segments → candidate windows (prefilter).
-  2. For each candidate, call LLM extractor (two-pass).
-  3. Run validator + final confidence.
-  4. Persist as ExtractedCall rows with status.
+  2. For each candidate, call LLM extractor (two-pass for calls; single-pass
+     for claims per ADR 0006).
+  3. Run validators + final confidence (calls and claims independently).
+  4. Persist as ExtractedCall and/or Claim rows with status.
 
-Idempotent: skips Documents that already have ExtractedCall rows tagged with
-the current `extractor_version`.
+Idempotent: skips Documents that already have ExtractedCall OR Claim rows
+tagged with the current `extractor_version`.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, union_all
 
 from app.config import load_project_settings
 from app.db import session_scope
 from app.extract.confidence import compute_final_confidence, decide_status
 from app.extract.llm_extractor import LLMExtractor
 from app.extract.prefilter import find_candidate_windows
-from app.extract.validator import validate
+from app.extract.validator import validate, validate_claim
 from app.logging import get_logger
 from app.models import (
     CALL_STATUS_REJECTED,
+    CLAIM_STATUS_ACCEPTED,
+    CLAIM_STATUS_PENDING_REVIEW,
+    Claim,
     Document,
     ExtractedCall,
     TranscriptSegment,
@@ -53,9 +57,11 @@ def run_extraction(
 
     summary = {
         "documents": 0,
-        "extracted": 0,
+        "extracted": 0,           # accepted ExtractedCall rows persisted
+        "claims_extracted": 0,    # accepted Claim rows persisted
         "no_call": 0,
         "rejected": 0,
+        "claims_rejected": 0,
         "errors": 0,
     }
 
@@ -78,8 +84,10 @@ def run_extraction(
                 use_two_pass=use_two_pass,
             )
             summary["extracted"] += doc_summary["extracted"]
+            summary["claims_extracted"] += doc_summary["claims_extracted"]
             summary["no_call"] += doc_summary["no_call"]
             summary["rejected"] += doc_summary["rejected"]
+            summary["claims_rejected"] += doc_summary["claims_rejected"]
             log.info("extract.doc.done", doc_id=doc_id, **doc_summary)
         except Exception as e:  # pragma: no cover
             summary["errors"] += 1
@@ -97,14 +105,20 @@ def _load_pending_documents(
     min_segments: int = 1,
 ) -> list[tuple[int, str | None]]:
     """Documents with at least `min_segments` segments and no prior extracts
-    at this extractor_version. Sorted most-recent-first."""
+    (call OR claim) at this extractor_version. Sorted most-recent-first.
+
+    Note: Documents that produced neither calls nor claims at the current
+    version are reprocessed on every run. ADR 0006 §"Consequences" flagged
+    this; a `DocumentExtractionRun` marker table is the planned fix.
+    """
     with session_scope() as session:
-        processed_subq = (
-            select(ExtractedCall.document_id)
-            .where(ExtractedCall.extractor_version == extractor_version)
-            .distinct()
-            .subquery()
+        processed_calls = select(ExtractedCall.document_id).where(
+            ExtractedCall.extractor_version == extractor_version
         )
+        processed_claims = select(Claim.document_id).where(
+            Claim.extractor_version == extractor_version
+        )
+        processed_subq = union_all(processed_calls, processed_claims).subquery()
         q = (
             select(Document.id, Document.title)
             .join(TranscriptSegment, TranscriptSegment.document_id == Document.id)
@@ -129,7 +143,13 @@ def _process_document(
     extractor_version: str,
     use_two_pass: bool,
 ) -> dict[str, int]:
-    summary = {"extracted": 0, "no_call": 0, "rejected": 0}
+    summary = {
+        "extracted": 0,
+        "claims_extracted": 0,
+        "no_call": 0,
+        "rejected": 0,
+        "claims_rejected": 0,
+    }
 
     with session_scope() as session:
         segments = (
@@ -154,59 +174,156 @@ def _process_document(
         else:
             result = extractor.extract(text)
 
-        if result.no_call is not None:
-            summary["no_call"] += 1
-            continue
-
-        if result.call is None:
-            summary["rejected"] += 1
-            continue
-
-        validation = validate(result.call, source_text=text, universe=universe)
-        if validation.accepted_call is None:
-            summary["rejected"] += 1
-            continue
-
-        final_call = validation.accepted_call
-        final_conf = compute_final_confidence(final_call, validation)
-        status = decide_status(final_conf, validation)
-
-        if status == CALL_STATUS_REJECTED:
-            summary["rejected"] += 1
-            continue
-
         primary_segment_id = (
             cand.window.source_segment_ids[0] if cand.window.source_segment_ids else None
         )
 
-        with session_scope() as session:
-            session.add(
-                ExtractedCall(
-                    document_id=doc_id,
-                    primary_segment_id=primary_segment_id,
-                    ticker=final_call.ticker,
-                    direction=final_call.direction,
-                    entry_type=final_call.entry_type,
-                    entry_price=final_call.entry_price,
-                    target_price=final_call.target_price,
-                    stop_price=final_call.stop_price,
-                    timeframe=final_call.timeframe,
-                    reasoning_summary=final_call.reasoning_summary,
-                    evidence_quote=final_call.ticker_evidence,
-                    context_text=text,
-                    context_start_seconds=cand.context.start_seconds,
-                    context_end_seconds=cand.context.end_seconds,
-                    extracted_at=datetime.now(tz=UTC),
-                    extractor_version=extractor_version,
-                    llm_confidence=final_call.overall_confidence,
-                    rule_confidence=validation.rule_confidence,
-                    final_confidence=final_conf,
-                    status=status,
-                    validator_notes=(
-                        "; ".join(validation.warnings) if validation.warnings else None
-                    ),
-                )
-            )
-        summary["extracted"] += 1
+        # Claims and calls are independent: a window may produce one, the
+        # other, both, or neither. Process them separately.
+        _persist_call(
+            result_call=result.call,
+            text=text,
+            cand=cand,
+            doc_id=doc_id,
+            primary_segment_id=primary_segment_id,
+            extractor_version=extractor_version,
+            universe=universe,
+            summary=summary,
+        )
+        _persist_claims(
+            claims=result.claims,
+            text=text,
+            cand=cand,
+            doc_id=doc_id,
+            primary_segment_id=primary_segment_id,
+            extractor_version=extractor_version,
+            universe=universe,
+            summary=summary,
+        )
+        if result.no_call is not None and not result.has_claims and result.call is None:
+            summary["no_call"] += 1
 
     return summary
+
+
+def _persist_call(
+    *,
+    result_call,
+    text: str,
+    cand,
+    doc_id: int,
+    primary_segment_id: int | None,
+    extractor_version: str,
+    universe: Universe,
+    summary: dict[str, int],
+) -> None:
+    if result_call is None:
+        return
+
+    validation = validate(result_call, source_text=text, universe=universe)
+    if validation.accepted_call is None:
+        summary["rejected"] += 1
+        return
+
+    final_call = validation.accepted_call
+    final_conf = compute_final_confidence(final_call, validation)
+    status = decide_status(final_conf, validation)
+
+    if status == CALL_STATUS_REJECTED:
+        summary["rejected"] += 1
+        return
+
+    with session_scope() as session:
+        session.add(
+            ExtractedCall(
+                document_id=doc_id,
+                primary_segment_id=primary_segment_id,
+                ticker=final_call.ticker,
+                direction=final_call.direction,
+                entry_type=final_call.entry_type,
+                entry_price=final_call.entry_price,
+                target_price=final_call.target_price,
+                stop_price=final_call.stop_price,
+                timeframe=final_call.timeframe,
+                reasoning_summary=final_call.reasoning_summary,
+                evidence_quote=final_call.ticker_evidence,
+                context_text=text,
+                context_start_seconds=cand.context.start_seconds,
+                context_end_seconds=cand.context.end_seconds,
+                extracted_at=datetime.now(tz=UTC),
+                extractor_version=extractor_version,
+                llm_confidence=final_call.overall_confidence,
+                rule_confidence=validation.rule_confidence,
+                final_confidence=final_conf,
+                status=status,
+                validator_notes=(
+                    "; ".join(validation.warnings) if validation.warnings else None
+                ),
+            )
+        )
+    summary["extracted"] += 1
+
+
+def _persist_claims(
+    *,
+    claims,
+    text: str,
+    cand,
+    doc_id: int,
+    primary_segment_id: int | None,
+    extractor_version: str,
+    universe: Universe,
+    summary: dict[str, int],
+) -> None:
+    """Validate and persist each claim independently. One bad claim does not
+    discard the rest."""
+    if not claims:
+        return
+
+    accepted_rows: list[Claim] = []
+    for raw_claim in claims:
+        cv = validate_claim(raw_claim, source_text=text, universe=universe)
+        if cv.accepted_claim is None:
+            summary["claims_rejected"] += 1
+            continue
+
+        ac = cv.accepted_claim
+        # Final confidence: harmonic-style blend of LLM + rule. Same shape as
+        # call confidence but simpler — claim has only one self-reported number.
+        final_conf = (ac.overall_confidence + cv.rule_confidence) / 2.0
+        status = (
+            CLAIM_STATUS_ACCEPTED
+            if final_conf >= 0.5 and not cv.failures
+            else CLAIM_STATUS_PENDING_REVIEW
+        )
+
+        accepted_rows.append(
+            Claim(
+                document_id=doc_id,
+                primary_segment_id=primary_segment_id,
+                claim_type=ac.claim_type,
+                ticker=ac.ticker,
+                sector=ac.sector,
+                polarity=ac.polarity,
+                claim_class=ac.claim_class,
+                summary=ac.summary,
+                evidence_quote=ac.evidence_quote,
+                context_text=text,
+                context_start_seconds=cand.context.start_seconds,
+                context_end_seconds=cand.context.end_seconds,
+                extracted_at=datetime.now(tz=UTC),
+                extractor_version=extractor_version,
+                llm_confidence=ac.overall_confidence,
+                rule_confidence=cv.rule_confidence,
+                final_confidence=final_conf,
+                status=status,
+                validator_notes=(
+                    "; ".join(cv.warnings) if cv.warnings else None
+                ),
+            )
+        )
+
+    if accepted_rows:
+        with session_scope() as session:
+            session.add_all(accepted_rows)
+        summary["claims_extracted"] += len(accepted_rows)

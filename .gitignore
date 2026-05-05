@@ -48,6 +48,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local Claude session context (not committed)
+CLAUDE.md
+
 # Node (for apps/web, when added)
 node_modules/
 .next/
