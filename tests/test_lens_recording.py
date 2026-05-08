@@ -98,3 +98,22 @@ def test_record_handles_per_lens_cost_mismatch(session: Session):
     by_name = {r.lens_name: r for r in rows}
     assert by_name["quantitative"].duration_ms == 100
     assert by_name["fundamental"].duration_ms == 0
+
+
+def test_record_distinct_per_mode(session: Session):
+    """Same ticker × as_of × lens, different modes → two rows (one each)."""
+    lens = _lens("quantitative")
+    args = dict(
+        plan_id=None,
+        ticker="AAPL",
+        as_of=datetime(2026, 5, 8, tzinfo=UTC),
+        sources_used=[],
+        durations_ms=[100],
+        costs_usd=[0.001],
+    )
+    record_lens_snapshots(session, mode="quick", lenses=[lens], **args)
+    record_lens_snapshots(session, mode="deep", lenses=[lens], **args)
+    rows = session.execute(select(LensSnapshot)).scalars().all()
+    assert len(rows) == 2
+    modes = sorted(r.mode for r in rows)
+    assert modes == ["deep", "quick"]
