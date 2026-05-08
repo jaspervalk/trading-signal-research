@@ -571,3 +571,149 @@ def test_lens_view_revised_fields_default_to_none_or_empty():
     assert lv.revised_summary is None
     assert lv.revised_points == []
     assert lv.responded_to == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — round-2 cross-lens debate orchestration
+
+
+def _round_one_results() -> list[AgentResult]:
+    """Four happy round-1 analyst results, one per lens."""
+    return [
+        AgentResult(
+            agent_name=name,
+            lens=LensView(
+                name=name,
+                direction="bullish",
+                conviction="medium",
+                summary=f"round-1 {name}",
+                points=["p1", "p2"],
+            ),
+            cost_usd=0.01,
+            duration_ms=200,
+        )
+        for name in LENS_NAMES
+    ]
+
+
+def _round_two_results(*, fail_name: str | None = None) -> list[AgentResult]:
+    """Round-2: revised summary + responded_to populated. If `fail_name` is
+    given, that analyst's lens has no revised_summary (run_revision falls back
+    to round-1 verbatim on error)."""
+    out: list[AgentResult] = []
+    for name in LENS_NAMES:
+        if name == fail_name:
+            # Revision fell back to round-1 — no revised_summary populated.
+            lens = LensView(
+                name=name,
+                direction="bullish",
+                conviction="medium",
+                summary=f"round-1 {name}",
+                points=["p1", "p2"],
+            )
+        else:
+            lens = LensView(
+                name=name,
+                direction="bullish",
+                conviction="medium",
+                summary=f"round-1 {name}",
+                points=["p1", "p2"],
+                revised_summary=f"revised {name} after debate",
+                revised_points=["updated take after seeing others"],
+                responded_to=[other for other in LENS_NAMES if other != name],
+            )
+        out.append(
+            AgentResult(
+                agent_name=name,
+                lens=lens,
+                cost_usd=0.005,
+                duration_ms=150,
+            )
+        )
+    return out
+
+
+def test_deep_round_two_revises_lenses_when_flag_on(monkeypatch):
+    """When research.deep.cross_lens_round=True, revisions run and the judge
+    sees revised LensView instances."""
+    from app.research import deep as deep_mod
+
+    monkeypatch.setattr(deep_mod, "_cross_lens_enabled", lambda: True)
+
+    parallel_calls: list[list[AgentResult]] = [
+        _round_one_results(),
+        _round_two_results(),
+    ]
+
+    def fake_parallel(runners):
+        return parallel_calls.pop(0)
+
+    monkeypatch.setattr(deep_mod, "run_agents_parallel", fake_parallel)
+
+    packet = _stub_packet()
+    client = _FakeClient({"submit_synthesis": _good_judge()})
+    result = deep_mod.run(packet, client=client)
+
+    # All four lenses on the resulting plan carry revised content.
+    assert len(result.plan.lenses) == 4
+    for lens in result.plan.lenses:
+        assert lens.revised_summary is not None
+        assert lens.revised_points
+        assert lens.responded_to
+    # parallel_calls list was drained twice (round 1 + round 2).
+    assert parallel_calls == []
+
+
+def test_deep_round_two_falls_back_to_round_one_on_revision_failure(monkeypatch):
+    """If a round-2 revision returns a lens without revised_summary (because
+    run_revision fell back to round-1 verbatim on error), the orchestrator
+    keeps that round-1 lens in place. Judge sees a mix of revised + round-1."""
+    from app.research import deep as deep_mod
+
+    monkeypatch.setattr(deep_mod, "_cross_lens_enabled", lambda: True)
+
+    parallel_calls: list[list[AgentResult]] = [
+        _round_one_results(),
+        _round_two_results(fail_name="contrarian_risk"),
+    ]
+
+    def fake_parallel(runners):
+        return parallel_calls.pop(0)
+
+    monkeypatch.setattr(deep_mod, "run_agents_parallel", fake_parallel)
+
+    packet = _stub_packet()
+    client = _FakeClient({"submit_synthesis": _good_judge()})
+    result = deep_mod.run(packet, client=client)
+
+    by_name = {l.name: l for l in result.plan.lenses}
+    assert by_name["contrarian_risk"].revised_summary is None
+    for name in ("quantitative", "fundamental", "sentiment_macro"):
+        assert by_name[name].revised_summary is not None
+
+
+def test_deep_round_two_skipped_when_flag_off(monkeypatch):
+    """When cross_lens_round=False, round-2 doesn't run; revised_summary is
+    None on all lenses and run_agents_parallel is called only once."""
+    from app.research import deep as deep_mod
+
+    monkeypatch.setattr(deep_mod, "_cross_lens_enabled", lambda: False)
+
+    call_count = {"n": 0}
+
+    def fake_parallel(runners):
+        call_count["n"] += 1
+        return _round_one_results()
+
+    monkeypatch.setattr(deep_mod, "run_agents_parallel", fake_parallel)
+
+    packet = _stub_packet()
+    client = _FakeClient({"submit_synthesis": _good_judge()})
+    result = deep_mod.run(packet, client=client)
+
+    assert call_count["n"] == 1
+    assert len(result.plan.lenses) == 4
+    for lens in result.plan.lenses:
+        assert lens.revised_summary is None
+        assert lens.revised_points == []
+        assert lens.responded_to == []
