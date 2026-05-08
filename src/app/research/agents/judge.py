@@ -4,8 +4,12 @@
 The judge does NOT re-litigate each lens; it accepts each analyst's read
 as authoritative within that analyst's discipline. Its job is to:
 
-1. Pick the final numeric levels from the deterministic candidates (same
-   ±15% clamp + minimum-risk-distance guard as Quick mode).
+1. Pick the final levels by *reference* (entry by kind; exits and
+   invalidation by integer index into the deterministic candidate
+   lists). The system resolves picks against the candidates verbatim —
+   no scaling, no clamping, no ±15% drift. R/R run-to-run variance for
+   a given packet is bounded by the index-pick step alone (and Quick
+   mode's temperature=0 keeps that step deterministic too).
 2. Decide a final `confidence` and `timeframe` weighed across lenses
    (with the upstream rubric as a hard ceiling — same as Quick).
 3. Write the consolidated bull / bear / risks prose, sourcing from each
@@ -35,11 +39,14 @@ from app.research.agents.base import (
     _extract_tool_input,
 )
 from app.research.context import ResearchPacket
+from app.research.rr_distribution import compute_rr_distribution, risk_reward
 from app.research.schema import (
     AgentNote,
     CONFIDENCE,
+    CandidateLevels,
     EntryExitPlan,
     LensView,
+    Picks,
     TIMEFRAMES,
     ZoneBand,
     blended_risk_reward,
@@ -48,16 +55,16 @@ from app.research.schema import (
 log = get_logger(__name__)
 
 
-# Same level-clamp + minimum-risk constants as Quick mode. Reused so Quick
-# and Deep emit comparable numeric levels for the same setup.
-LEVEL_EDIT_TOLERANCE = 0.15
-MIN_RISK_ATR_MULTIPLE = 0.75
-
 JUDGE_TOOL_NAME = "submit_synthesis"
 JUDGE_TOOL_DESCRIPTION = (
     "Submit the synthesised entry/exit plan after weighing the four lens "
-    "outputs. Pick numeric levels from the candidate lists; ±15% scaling "
-    "with rationale is allowed but no fresh inventions."
+    "outputs. Pick levels by REFERENCE: `entry_kind` is 'breakout' or "
+    "'pullback' (matching the candidate_levels block in the user message); "
+    "`primary_exit_index`, `runner_exit_index` (optional), and "
+    "`invalidation_index` are 0-based indices into the corresponding "
+    "candidate lists. Provide a short rationale per pick. You do NOT emit "
+    "raw price numbers — the system resolves your picks against the "
+    "deterministic candidates."
 )
 
 
@@ -68,9 +75,11 @@ Contrarian-Risk) plus the deterministic candidate levels. You produce ONE \
 synthesised plan.
 
 Hard rules:
-1. NUMERIC LEVELS: Pick from the candidate_levels lists in the user message. \
-   You may scale any chosen level by at most ±15% with rationale. Do not \
-   invent levels that are not anchored to the candidates.
+1. NUMERIC LEVELS: You DO NOT emit raw prices. Pick by reference: \
+   `entry_kind` is 'breakout' or 'pullback'; `primary_exit_index`, \
+   `runner_exit_index` (optional), `invalidation_index` are 0-based \
+   indices into the candidate_levels lists in the user message. The \
+   system resolves your picks against the deterministic candidates.
 2. CONFIDENCE: bounded by the upstream rubric. If rubric_status_confidence is \
    'low', your `confidence` may not exceed 'medium'. The lens convictions \
    advise; the rubric ceilings.
@@ -82,7 +91,7 @@ Hard rules:
    reference WHICH lens raised it ('per Quant: ...', 'per Fundamental: ...').
 5. NEVER use 'buy' / 'sell' / 'recommendation' / 'guarantee' / 'will'. Use \
    'research zone', 'consider', 'may'.
-6. RATIONALE on each ZoneBand should be ≤ 25 words.
+6. RATIONALE on each pick should be ≤ 25 words.
 """
 
 
@@ -100,40 +109,35 @@ Snapshot:
 - ATR(14): {atr_14}
 - pct off 52w high / low: {pct_off_52w_high} / {pct_off_52w_low}
 
-CANDIDATE LEVELS (pick from these, ±15% scaling allowed with rationale):
+CANDIDATE LEVELS (pick BY INDEX / KIND — the system resolves your picks):
 {candidate_levels_block}
 
 LENS PANEL — four independent reads:
 {lenses_block}
 
-Synthesise via submit_synthesis. Pick the final entry / pullback / exit / \
-runner / invalidation, decide confidence + timeframe, and write 3-5 bullets \
-each of bull_case / bear_case / key_risks.
+Synthesise via submit_synthesis. Pick the final entry kind, primary exit \
+index, optional runner exit index, and invalidation index; decide \
+confidence + timeframe; and write 3-5 bullets each of bull_case / \
+bear_case / key_risks.
 """
 
 
 def judge_tool_input_schema() -> dict[str, Any]:
-    """Strict schema for the synthesis tool. Mirrors Quick mode's plan
-    schema minus the per-lens block (lenses come from the analysts).
+    """Strict schema. The judge picks levels by *reference* — entry by kind,
+    exits and invalidation by index. No raw numbers; no scaling. Lenses
+    come from the analysts and are passed through; this schema is
+    intentionally identical to Quick mode's MINUS the lens block.
     """
-    zone = {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["low", "high", "method", "rationale"],
-        "properties": {
-            "low": {"type": "number"},
-            "high": {"type": "number"},
-            "method": {"type": "string"},
-            "rationale": {"type": "string"},
-        },
-    }
     return {
         "type": "object",
         "additionalProperties": False,
         "required": [
-            "entry_zone",
-            "exit_zone_primary",
-            "invalidation",
+            "entry_kind",
+            "entry_rationale",
+            "primary_exit_index",
+            "primary_exit_rationale",
+            "invalidation_index",
+            "invalidation_rationale",
             "confidence",
             "timeframe",
             "bull_case",
@@ -141,31 +145,19 @@ def judge_tool_input_schema() -> dict[str, Any]:
             "key_risks",
         ],
         "properties": {
-            "entry_zone": zone,
-            "pullback_entry_zone": zone,
-            "exit_zone_primary": zone,
-            "exit_zone_runner": zone,
-            "invalidation": {"type": "number"},
+            "entry_kind": {"type": "string", "enum": ["breakout", "pullback"]},
+            "entry_rationale": {"type": "string"},
+            "primary_exit_index": {"type": "integer", "minimum": 0},
+            "primary_exit_rationale": {"type": "string"},
+            "runner_exit_index": {"type": "integer", "minimum": 0},
+            "runner_exit_rationale": {"type": "string"},
+            "invalidation_index": {"type": "integer", "minimum": 0},
+            "invalidation_rationale": {"type": "string"},
             "confidence": {"type": "string", "enum": list(CONFIDENCE)},
             "timeframe": {"type": "string", "enum": list(TIMEFRAMES)},
-            "bull_case": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "maxItems": 8,
-            },
-            "bear_case": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "maxItems": 8,
-            },
-            "key_risks": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "maxItems": 8,
-            },
+            "bull_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
+            "bear_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
+            "key_risks": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
             "note": {"type": "string"},
         },
     }
@@ -265,22 +257,21 @@ def _format_candidate_levels(p: ResearchPacket) -> str:
     cl = p.candidate_levels
     parts: list[str] = []
     if cl.breakout_entry:
-        parts.append(f"- breakout_entry: {_format_zone(cl.breakout_entry)}")
+        parts.append(f"- entry_kind=breakout: {_format_zone(cl.breakout_entry)}")
     if cl.pullback_entry:
-        parts.append(f"- pullback_entry: {_format_zone(cl.pullback_entry)}")
+        parts.append(f"- entry_kind=pullback: {_format_zone(cl.pullback_entry)}")
     if cl.primary_exit_candidates:
-        parts.append("- primary_exit_candidates:")
-        for z in cl.primary_exit_candidates:
-            parts.append(f"    • {_format_zone(z)}")
+        parts.append("- primary_exit_candidates (pick by primary_exit_index):")
+        for i, z in enumerate(cl.primary_exit_candidates):
+            parts.append(f"    [{i}] {_format_zone(z)}")
     if cl.runner_exit_candidates:
-        parts.append("- runner_exit_candidates:")
-        for z in cl.runner_exit_candidates:
-            parts.append(f"    • {_format_zone(z)}")
+        parts.append("- runner_exit_candidates (pick by runner_exit_index, optional):")
+        for i, z in enumerate(cl.runner_exit_candidates):
+            parts.append(f"    [{i}] {_format_zone(z)}")
     if cl.invalidation_candidates:
-        parts.append(
-            "- invalidation_candidates: "
-            + ", ".join(f"{x:.2f}" for x in cl.invalidation_candidates)
-        )
+        parts.append("- invalidation_candidates (pick by invalidation_index):")
+        for i, x in enumerate(cl.invalidation_candidates):
+            parts.append(f"    [{i}] {x:.2f}")
     return "\n".join(parts) if parts else "(no deterministic candidates available)"
 
 
@@ -315,7 +306,7 @@ def _fmt_pct(value) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Plan assembly (mirrors Quick mode's clamping for parity)
+# Plan assembly — categorical picks resolved against deterministic candidates.
 
 
 def _build_plan(
@@ -328,47 +319,31 @@ def _build_plan(
     duration_ms: int,
 ) -> EntryExitPlan:
     cl = packet.candidate_levels
+    picks = _resolve_picks(raw, cl)
 
-    entry_zone = _clamp_zone(raw["entry_zone"], _all_entry_candidates(cl))
-    pullback_entry_zone = (
-        _clamp_zone(raw["pullback_entry_zone"], _all_entry_candidates(cl))
-        if raw.get("pullback_entry_zone")
-        else None
-    )
-    exit_zone_primary = _clamp_zone(raw["exit_zone_primary"], cl.primary_exit_candidates)
+    entry_zone = _entry_zone(cl, picks.entry_kind)
+    exit_zone_primary = cl.primary_exit_candidates[picks.primary_index]
     exit_zone_runner = (
-        _clamp_zone(raw["exit_zone_runner"], cl.runner_exit_candidates)
-        if raw.get("exit_zone_runner")
+        cl.runner_exit_candidates[picks.runner_index]
+        if picks.runner_index is not None
         else None
     )
-    invalidation = _clamp_invalidation(raw["invalidation"], cl.invalidation_candidates)
-
-    # Minimum-risk-distance guard (same as Quick).
-    atr = cl.atr_14
-    if atr is not None and atr > 0:
-        floor = entry_zone.low - MIN_RISK_ATR_MULTIPLE * atr
-        if invalidation > floor:
-            log.info(
-                "research.judge.invalidation_floor",
-                raw=invalidation,
-                floored=floor,
-                atr=atr,
-                entry_low=entry_zone.low,
-            )
-            invalidation = floor
+    invalidation = float(cl.invalidation_candidates[picks.invalidation_index])
 
     confidence = _bound_confidence(
         raw_confidence=raw["confidence"],
         rubric_confidence=packet.view.status.confidence,
     )
 
-    rr_primary = _risk_reward(entry_zone, exit_zone_primary, invalidation)
+    rr_primary = risk_reward(entry_zone, exit_zone_primary, invalidation)
     rr_runner = (
-        _risk_reward(entry_zone, exit_zone_runner, invalidation)
+        risk_reward(entry_zone, exit_zone_runner, invalidation)
         if exit_zone_runner is not None
         else None
     )
     rr_blended = blended_risk_reward(rr_primary=rr_primary, rr_runner=rr_runner)
+
+    distribution = compute_rr_distribution(cl, picks)
 
     # Audit trail: one AgentNote per analyst + the judge.
     trace: list[AgentNote] = []
@@ -406,20 +381,24 @@ def _build_plan(
     )
 
     sources = list(packet.sources_used)
-    if packet.view.valuation.forward_pe is not None or packet.view.valuation.market_cap is not None:
+    if (
+        packet.view.valuation.forward_pe is not None
+        or packet.view.valuation.market_cap is not None
+    ):
         sources.append("fundamentals")
 
     return EntryExitPlan(
         ticker=packet.ticker,
         as_of=packet.as_of,
         entry_zone=entry_zone,
-        pullback_entry_zone=pullback_entry_zone,
+        pullback_entry_zone=None,
         exit_zone_primary=exit_zone_primary,
         exit_zone_runner=exit_zone_runner,
         invalidation=invalidation,
         risk_reward_primary=rr_primary,
         risk_reward_runner=rr_runner,
         plan_r_r_blended=rr_blended,
+        r_r_distribution=distribution,
         confidence=confidence,
         timeframe=raw["timeframe"],
         bull_case=list(raw.get("bull_case", [])),
@@ -434,48 +413,50 @@ def _build_plan(
     )
 
 
-def _all_entry_candidates(cl: Any) -> list[ZoneBand]:
-    out: list[ZoneBand] = []
-    if cl.breakout_entry:
-        out.append(cl.breakout_entry)
-    if cl.pullback_entry:
-        out.append(cl.pullback_entry)
-    return out
+def _resolve_picks(raw: dict[str, Any], cl: CandidateLevels) -> Picks:
+    """Validate + clamp categorical picks. Falls back to whatever's available."""
+    entry_kind = raw.get("entry_kind", "breakout")
+    if entry_kind not in ("breakout", "pullback"):
+        entry_kind = "breakout"
+    if entry_kind == "breakout" and cl.breakout_entry is None:
+        entry_kind = "pullback"
+    elif entry_kind == "pullback" and cl.pullback_entry is None:
+        entry_kind = "breakout"
+    if cl.breakout_entry is None and cl.pullback_entry is None:
+        raise RuntimeError("No entry candidates available; cannot build plan.")
 
-
-def _clamp_zone(raw: dict[str, Any], candidates: list[ZoneBand]) -> ZoneBand:
-    z = ZoneBand(
-        low=float(raw["low"]),
-        high=float(raw["high"]),
-        method=str(raw.get("method", "")),
-        rationale=str(raw.get("rationale", "")),
+    primary_idx = _clamp_index(
+        raw.get("primary_exit_index", 0), len(cl.primary_exit_candidates)
     )
-    if not candidates:
-        return z
-    nearest = min(
-        candidates,
-        key=lambda c: abs((c.low + c.high) / 2 - (z.low + z.high) / 2),
+    runner_raw = raw.get("runner_exit_index")
+    if runner_raw is None or not cl.runner_exit_candidates:
+        runner_idx: int | None = None
+    else:
+        runner_idx = _clamp_index(runner_raw, len(cl.runner_exit_candidates))
+    inv_idx = _clamp_index(
+        raw.get("invalidation_index", 0), len(cl.invalidation_candidates)
     )
-    z.low = _clamp_value(z.low, nearest.low)
-    z.high = _clamp_value(z.high, nearest.high)
-    if z.low > z.high:
-        z.low, z.high = z.high, z.low
-    return z
+
+    return Picks(
+        entry_kind=entry_kind,
+        primary_index=primary_idx,
+        runner_index=runner_idx,
+        invalidation_index=inv_idx,
+    )
 
 
-def _clamp_value(value: float, anchor: float) -> float:
-    if anchor == 0:
-        return value
-    lo = anchor * (1 - LEVEL_EDIT_TOLERANCE)
-    hi = anchor * (1 + LEVEL_EDIT_TOLERANCE)
-    return max(lo, min(hi, value))
+def _entry_zone(cl: CandidateLevels, entry_kind: str) -> ZoneBand:
+    if entry_kind == "breakout" and cl.breakout_entry is not None:
+        return cl.breakout_entry
+    if cl.pullback_entry is not None:
+        return cl.pullback_entry
+    raise RuntimeError("No matching entry candidate")
 
 
-def _clamp_invalidation(value: float, candidates: list[float]) -> float:
-    if not candidates:
-        return float(value)
-    nearest = min(candidates, key=lambda c: abs(c - value))
-    return _clamp_value(float(value), nearest)
+def _clamp_index(value: int, n: int) -> int:
+    if n <= 0:
+        raise RuntimeError("No candidates to pick from.")
+    return max(0, min(int(value), n - 1))
 
 
 def _bound_confidence(*, raw_confidence: str, rubric_confidence: str) -> str:
@@ -485,16 +466,6 @@ def _bound_confidence(*, raw_confidence: str, rubric_confidence: str) -> str:
         rubric_confidence = "low"
     levels = list(CONFIDENCE)
     return levels[min(levels.index(raw_confidence), levels.index(rubric_confidence))]
-
-
-def _risk_reward(entry: ZoneBand, exit_: ZoneBand, invalidation: float) -> float:
-    risk = entry.low - invalidation
-    if risk <= 0:
-        return 0.0
-    reward = exit_.low - entry.high
-    if reward <= 0:
-        return 0.0
-    return round(reward / risk, 2)
 
 
 __all__ = ["JudgeResult", "judge_tool_input_schema", "run_judge"]

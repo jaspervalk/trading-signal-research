@@ -209,16 +209,14 @@ def _good_lens(direction: str = "bullish", conviction: str = "medium") -> dict:
 
 def _good_judge() -> dict:
     return {
-        "entry_zone": {
-            "low": 287.51, "high": 290.86, "method": "breakout band", "rationale": "x",
-        },
-        "exit_zone_primary": {
-            "low": 298.93, "high": 300.61, "method": "fib 1.272×", "rationale": "x",
-        },
-        "exit_zone_runner": {
-            "low": 313.47, "high": 315.14, "method": "fib 1.618×", "rationale": "x",
-        },
-        "invalidation": 277.48,
+        "entry_kind": "breakout",
+        "entry_rationale": "breakout band picked on momentum stack",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "fib 1.272× nearest target",
+        "runner_exit_index": 0,
+        "runner_exit_rationale": "fib 1.618× runner",
+        "invalidation_index": 0,
+        "invalidation_rationale": "swing low under base",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["per Quant: trend intact"],
@@ -369,6 +367,42 @@ def test_judge_emits_plan_with_lenses_and_blended_rr():
     # Trace = 4 analysts + 1 judge.
     assert len(plan.agent_trace) == 5
     assert plan.agent_trace[-1].agent == "judge"
+    # The judge picks levels by reference, so picked levels must equal
+    # candidate-list entries verbatim.
+    cl = packet.candidate_levels
+    assert plan.entry_zone == cl.breakout_entry
+    assert plan.exit_zone_primary == cl.primary_exit_candidates[0]
+    assert plan.invalidation == cl.invalidation_candidates[0]
+    # R/R distribution must populate.
+    assert plan.r_r_distribution is not None
+    assert plan.r_r_distribution.n_combos > 0
+    chosen = [c for c in plan.r_r_distribution.combos if c.is_chosen]
+    assert len(chosen) == 1
+
+
+def test_judge_invalid_entry_kind_falls_back():
+    packet = _stub_packet()
+    raw = dict(_good_judge())
+    raw["entry_kind"] = "rocketship"  # not in {"breakout","pullback"}
+    client = _FakeClient({"submit_synthesis": raw})
+    plan = judge_mod.run_judge(
+        packet=packet, lenses=[], analyst_results=[], client=client,
+    ).plan
+    # Falls back to breakout (default), which is available in the stub packet.
+    assert plan.entry_zone == packet.candidate_levels.breakout_entry
+
+
+def test_judge_out_of_range_primary_index_clamps():
+    packet = _stub_packet()
+    raw = dict(_good_judge())
+    raw["primary_exit_index"] = 999  # way past end
+    client = _FakeClient({"submit_synthesis": raw})
+    plan = judge_mod.run_judge(
+        packet=packet, lenses=[], analyst_results=[], client=client,
+    ).plan
+    cl = packet.candidate_levels
+    # Clamps to last available primary candidate.
+    assert plan.exit_zone_primary == cl.primary_exit_candidates[-1]
 
 
 def test_judge_passes_temperature_zero_to_anthropic():
@@ -397,20 +431,6 @@ def test_judge_bounds_confidence_to_rubric():
         packet=packet, lenses=[], analyst_results=[], client=client,
     ).plan
     assert plan.confidence == "low"
-
-
-def test_judge_enforces_min_risk_distance():
-    packet = _stub_packet()
-    raw = dict(_good_judge())
-    # LLM picks a stop just below entry low (287.51). Risk = 287.51 - 287.0 = 0.51,
-    # less than 0.75×ATR (0.75 * 6.7 = 5.025). Must be floored down.
-    raw["invalidation"] = 287.0
-    client = _FakeClient({"submit_synthesis": raw})
-    plan = judge_mod.run_judge(
-        packet=packet, lenses=[], analyst_results=[], client=client,
-    ).plan
-    expected_floor = plan.entry_zone.low - 0.75 * 6.7
-    assert plan.invalidation <= expected_floor + 1e-6
 
 
 # ---------------------------------------------------------------------------
