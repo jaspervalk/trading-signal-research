@@ -375,3 +375,30 @@ are unchanged — the judge does not yet see the scorecards. That's Phase 6.
 **Next:** Phase 2 (cross-lens debate round) and Phase 3 (watchlist scan
 reranking) are the two cheapest follow-ups; both are independent of Phase 1
 data accumulation.
+
+## 14. Cross-lens debate (Phase 2 of agent roadmap)
+
+Phase 2 of [docs/superpowers/plans/2026-05-08-lens-agents-roadmap.md](superpowers/plans/2026-05-08-lens-agents-roadmap.md).
+Adds an opt-in second-round debate where each Deep-mode analyst sees the
+other three lenses' round-1 reads and may revise their summary / points /
+direction / conviction.
+
+Toggle: `research.deep.cross_lens_round` in `configs/settings.yaml`.
+Default `false` until cost / behavior are validated on real runs.
+
+**What landed:**
+
+| Component | File |
+|---|---|
+| `LensView` schema additions (`revised_summary`, `revised_points`, `responded_to`) | [src/app/research/schema.py](../src/app/research/schema.py) |
+| Per-analyst `run_*_revision()` functions + shared helper | [src/app/research/agents/base.py](../src/app/research/agents/base.py), `agents/{technical,fundamental,sentiment,contrarian}.py` |
+| Orchestrator integration | [src/app/research/deep.py](../src/app/research/deep.py) |
+| Settings flag | [src/app/config.py](../src/app/config.py), [configs/settings.yaml](../configs/settings.yaml) |
+| Frontend rendering | [apps/web/src/lib/api.ts](../apps/web/src/lib/api.ts), [apps/web/src/components/LensPanel.tsx](../apps/web/src/components/LensPanel.tsx) |
+
+**Failure semantics:** round-2 failure for an analyst → fall back to its
+round-1 lens for the judge. All-4 round-2 failure → judge sees round-1
+lenses.
+
+**Cost:** +~$0.02 / Deep run when enabled (4 extra Haiku calls at
+temperature=0). Total Deep cost rises from ~$0.04-0.10 to ~$0.06-0.12.
