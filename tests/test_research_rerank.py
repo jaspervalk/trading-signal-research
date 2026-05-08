@@ -89,3 +89,99 @@ def test_rerank_judge_returns_structured_output():
     assert duration_ms >= 0
     # Verify temperature=0
     assert client.last_kwargs.get("temperature") == 0
+
+
+# Reuse the minimal ResearchPacket builder from the deep-mode test file. It
+# constructs a stub `TickerResearchView` + `CandidateLevels` for AAPL keyed
+# at 2026-05-08 — exactly what we need here too.
+from tests.test_research_deep import _stub_packet  # noqa: E402
+
+from app.research.rerank import run_rerank  # noqa: E402
+
+
+def test_run_rerank_happy_path(monkeypatch):
+    """Quant + Contrarian both succeed → judge picks 'high'."""
+    from app.research import rerank as rerank_mod
+
+    quant_lens = LensView(name="quantitative", direction="bullish", conviction="high",
+                          summary="strong setup", points=["p1"])
+    contra_lens = LensView(name="contrarian_risk", direction="neutral", conviction="medium",
+                           summary="no concerns", points=["p1"])
+
+    def fake_quant(packet, client=None):
+        from app.research.agents.base import AgentResult
+        return AgentResult(agent_name="quantitative", lens=quant_lens, cost_usd=0.005, duration_ms=1200)
+
+    def fake_contrarian(packet, client=None):
+        from app.research.agents.base import AgentResult
+        return AgentResult(agent_name="contrarian_risk", lens=contra_lens, cost_usd=0.005, duration_ms=1100)
+
+    def fake_judge(*, ticker, as_of, lenses, last_close, atr_14, client=None):
+        return ("high", "Quant: clean setup; Contrarian: no risk flags.", 0.008, 1500)
+
+    monkeypatch.setattr(rerank_mod, "run_technical", fake_quant)
+    monkeypatch.setattr(rerank_mod, "run_contrarian", fake_contrarian)
+    monkeypatch.setattr(rerank_mod, "run_rerank_judge", fake_judge)
+
+    packet = _stub_packet()
+
+    result = run_rerank(packet)
+    assert result.ticker == packet.ticker
+    assert result.rank == "high"
+    assert "Quant" in result.rationale
+    assert len(result.lenses) == 2
+    assert result.cost_usd > 0
+
+
+def test_run_rerank_one_analyst_fails(monkeypatch):
+    """If 1 of 2 analysts fails, judge runs with 1 lens. Result still emitted."""
+    from app.research import rerank as rerank_mod
+    from app.research.agents.base import AgentResult
+
+    contra_lens = LensView(name="contrarian_risk", direction="bearish", conviction="high",
+                           summary="overbought + thin float", points=["p1"])
+
+    def fake_quant_fail(packet, client=None):
+        return AgentResult(agent_name="quantitative", lens=None, cost_usd=0.0,
+                           duration_ms=500, error="Haiku timeout")
+
+    def fake_contrarian(packet, client=None):
+        return AgentResult(agent_name="contrarian_risk", lens=contra_lens, cost_usd=0.005, duration_ms=1100)
+
+    def fake_judge(*, ticker, as_of, lenses, last_close, atr_14, client=None):
+        # Judge sees only contrarian; picks 'low' or 'skip'
+        return ("skip", "Quant failed; Contrarian-only insufficient.", 0.005, 1000)
+
+    monkeypatch.setattr(rerank_mod, "run_technical", fake_quant_fail)
+    monkeypatch.setattr(rerank_mod, "run_contrarian", fake_contrarian)
+    monkeypatch.setattr(rerank_mod, "run_rerank_judge", fake_judge)
+
+    packet = _stub_packet()
+    result = run_rerank(packet)
+    assert result.rank == "skip"
+    assert len(result.lenses) == 1  # only contrarian survived
+
+
+def test_run_rerank_both_analysts_fail(monkeypatch):
+    """If both analysts fail, return rank='skip' WITHOUT calling the judge."""
+    from app.research import rerank as rerank_mod
+    from app.research.agents.base import AgentResult
+
+    def fake_fail(packet, client=None):
+        return AgentResult(agent_name="x", lens=None, cost_usd=0.0, duration_ms=500, error="fail")
+
+    judge_called = []
+    def fake_judge(**kwargs):
+        judge_called.append(kwargs)
+        return ("high", "shouldn't happen", 0.0, 0)
+
+    monkeypatch.setattr(rerank_mod, "run_technical", fake_fail)
+    monkeypatch.setattr(rerank_mod, "run_contrarian", fake_fail)
+    monkeypatch.setattr(rerank_mod, "run_rerank_judge", fake_judge)
+
+    packet = _stub_packet()
+    result = run_rerank(packet)
+    assert result.rank == "skip"
+    assert result.error is not None
+    assert "both analysts failed" in result.error.lower()
+    assert judge_called == []  # judge NOT invoked when both fail
