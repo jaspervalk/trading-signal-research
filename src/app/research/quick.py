@@ -5,10 +5,12 @@ claims + deterministic candidate levels) and returns an `EntryExitPlan`
 with structured zones + qualitative reasoning.
 
 Hallucination guards:
-- LLM picks among the deterministic candidate levels; it cannot invent a
-  level that isn't on the list.
-- The LLM may scale a chosen level by ±15% with rationale; wider edits
-  are clamped to the boundary on parse and the rationale is preserved.
+- LLM picks levels by *reference* (entry_kind + integer indices into
+  candidate lists), not by emitting raw numbers. The system resolves
+  picks against the deterministic candidates verbatim — there is nothing
+  to scale or clamp.
+- Out-of-range / unavailable picks degrade gracefully (nearest valid
+  index, fallback to whichever entry kind is available).
 - `confidence` is bounded by the upstream `DecisionSupportStatus.confidence`:
   if the rubric says "low", the plan's confidence is at most "medium".
 """
@@ -25,6 +27,7 @@ from app.analysis.schema import CONFIDENCE_LEVELS
 from app.config import load_env
 from app.logging import get_logger
 from app.research.context import ResearchPacket
+from app.research.rr_distribution import Picks, compute_rr_distribution
 from app.research.schema import (
     AgentNote,
     CONFIDENCE,
@@ -42,13 +45,15 @@ log = get_logger(__name__)
 HAIKU_PRICE_IN = 1.0
 HAIKU_PRICE_OUT = 5.0
 
-LEVEL_EDIT_TOLERANCE = 0.15  # LLM may scale a chosen level by ±15%
-
 QUICK_TOOL_NAME = "submit_entry_exit_plan"
 QUICK_TOOL_DESCRIPTION = (
-    "Submit a structured entry/exit research plan for the ticker. "
-    "Pick numeric levels from the candidate lists provided in the user message — "
-    "do not invent levels. You may scale a chosen level by at most ±15% with rationale."
+    "Submit an entry/exit research plan. Pick levels by REFERENCE: "
+    "`entry_kind` is 'breakout' or 'pullback' (matching the candidate_levels "
+    "block in the user message); `primary_exit_index`, `runner_exit_index`, "
+    "and `invalidation_index` are 0-based indices into the corresponding "
+    "candidate lists. Provide a short rationale per pick. You do NOT emit "
+    "raw price numbers — the system resolves your picks against the "
+    "deterministic candidates."
 )
 
 
@@ -58,9 +63,11 @@ packet. Your job is to produce one entry/exit plan and a 4-lens analyst panel, \
 NOT a recommendation. The final user pulls the trigger.
 
 Hard rules:
-1. NUMERIC LEVELS: Pick from the candidate_levels lists in the user message. \
-   You may scale any chosen level by at most ±15% with rationale. Do not \
-   invent levels not anchored to the candidates.
+1. NUMERIC LEVELS: You DO NOT emit raw prices. Pick by reference: \
+   `entry_kind` is 'breakout' or 'pullback'; `primary_exit_index`, \
+   `runner_exit_index` (optional), `invalidation_index` are 0-based \
+   indices into the candidate_levels lists in the user message. The \
+   system resolves your picks against the deterministic candidates.
 2. CONFIDENCE: bounded by the upstream rubric. If rubric_status_confidence is \
    'low', your `confidence` may not exceed 'medium'.
 3. TIMEFRAME: pick from {1-3d, 5-15d, 2-6w} based on the setup_type and ATR.
@@ -122,7 +129,7 @@ Levels:
 VALUATION (context for the Fundamental lens — does NOT feed into R/R math):
 {valuation_block}
 
-CANDIDATE LEVELS (pick from these, ±15% scaling allowed with rationale):
+CANDIDATE LEVELS (pick BY INDEX / KIND — the system resolves your picks):
 {candidate_levels_block}
 
 RECENT CLAIMS ({n_claims}, last 30d, accepted only):
@@ -134,28 +141,18 @@ lens views (quantitative, fundamental, sentiment_macro, contrarian_risk).
 
 
 def quick_tool_input_schema() -> dict[str, Any]:
-    """JSON schema for the Anthropic tool. Strict — extra fields rejected."""
-    zone = {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["low", "high", "method", "rationale"],
-        "properties": {
-            "low": {"type": "number"},
-            "high": {"type": "number"},
-            "method": {"type": "string"},
-            "rationale": {"type": "string"},
-        },
-    }
+    """Strict schema. The LLM picks levels by *reference* — entry by kind,
+    exits and invalidation by index into the candidate lists supplied in
+    the user message. No raw numbers; no scaling. R/R variance run-to-run
+    is eliminated for the same packet at temperature=0.
+    """
     lens = {
         "type": "object",
         "additionalProperties": False,
         "required": ["name", "direction", "conviction", "summary", "points"],
         "properties": {
             "name": {"type": "string", "enum": list(LENS_NAMES)},
-            "direction": {
-                "type": "string",
-                "enum": ["bullish", "bearish", "neutral"],
-            },
+            "direction": {"type": "string", "enum": ["bullish", "bearish", "neutral"]},
             "conviction": {"type": "string", "enum": list(CONFIDENCE)},
             "summary": {"type": "string"},
             "points": {
@@ -170,9 +167,12 @@ def quick_tool_input_schema() -> dict[str, Any]:
         "type": "object",
         "additionalProperties": False,
         "required": [
-            "entry_zone",
-            "exit_zone_primary",
-            "invalidation",
+            "entry_kind",
+            "entry_rationale",
+            "primary_exit_index",
+            "primary_exit_rationale",
+            "invalidation_index",
+            "invalidation_rationale",
             "confidence",
             "timeframe",
             "bull_case",
@@ -181,37 +181,20 @@ def quick_tool_input_schema() -> dict[str, Any]:
             "lenses",
         ],
         "properties": {
-            "entry_zone": zone,
-            "pullback_entry_zone": zone,
-            "exit_zone_primary": zone,
-            "exit_zone_runner": zone,
-            "invalidation": {"type": "number"},
+            "entry_kind": {"type": "string", "enum": ["breakout", "pullback"]},
+            "entry_rationale": {"type": "string"},
+            "primary_exit_index": {"type": "integer", "minimum": 0},
+            "primary_exit_rationale": {"type": "string"},
+            "runner_exit_index": {"type": "integer", "minimum": 0},
+            "runner_exit_rationale": {"type": "string"},
+            "invalidation_index": {"type": "integer", "minimum": 0},
+            "invalidation_rationale": {"type": "string"},
             "confidence": {"type": "string", "enum": list(CONFIDENCE)},
             "timeframe": {"type": "string", "enum": list(TIMEFRAMES)},
-            "bull_case": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "maxItems": 6,
-            },
-            "bear_case": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "maxItems": 6,
-            },
-            "key_risks": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "maxItems": 6,
-            },
-            "lenses": {
-                "type": "array",
-                "items": lens,
-                "minItems": 4,
-                "maxItems": 4,
-            },
+            "bull_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6},
+            "bear_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6},
+            "key_risks": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6},
+            "lenses": {"type": "array", "items": lens, "minItems": 4, "maxItems": 4},
             "note": {"type": "string"},
         },
     }
@@ -227,9 +210,6 @@ class _ClientLike(Protocol):
     """Anthropic-shaped interface — kept minimal so tests can inject."""
 
     def messages(self) -> Any: ...
-
-
-MIN_RISK_ATR_MULTIPLE = 0.75  # invalidation must be ≥ 0.75×ATR from entry low
 
 
 def run(
@@ -371,22 +351,21 @@ def _format_candidate_levels(p: ResearchPacket) -> str:
     cl = p.candidate_levels
     parts: list[str] = []
     if cl.breakout_entry:
-        parts.append(f"- breakout_entry: {_format_zone(cl.breakout_entry)}")
+        parts.append(f"- entry_kind=breakout: {_format_zone(cl.breakout_entry)}")
     if cl.pullback_entry:
-        parts.append(f"- pullback_entry: {_format_zone(cl.pullback_entry)}")
+        parts.append(f"- entry_kind=pullback: {_format_zone(cl.pullback_entry)}")
     if cl.primary_exit_candidates:
-        parts.append("- primary_exit_candidates:")
-        for z in cl.primary_exit_candidates:
-            parts.append(f"    • {_format_zone(z)}")
+        parts.append("- primary_exit_candidates (pick by primary_exit_index):")
+        for i, z in enumerate(cl.primary_exit_candidates):
+            parts.append(f"    [{i}] {_format_zone(z)}")
     if cl.runner_exit_candidates:
-        parts.append("- runner_exit_candidates:")
-        for z in cl.runner_exit_candidates:
-            parts.append(f"    • {_format_zone(z)}")
+        parts.append("- runner_exit_candidates (pick by runner_exit_index, optional):")
+        for i, z in enumerate(cl.runner_exit_candidates):
+            parts.append(f"    [{i}] {_format_zone(z)}")
     if cl.invalidation_candidates:
-        parts.append(
-            "- invalidation_candidates: "
-            + ", ".join(f"{x:.2f}" for x in cl.invalidation_candidates)
-        )
+        parts.append("- invalidation_candidates (pick by invalidation_index):")
+        for i, x in enumerate(cl.invalidation_candidates):
+            parts.append(f"    [{i}] {x:.2f}")
     return "\n".join(parts) if parts else "(no deterministic candidates available)"
 
 
@@ -446,52 +425,33 @@ def _build_plan(
     cost_usd: float,
     duration_ms: int,
 ) -> EntryExitPlan:
-    """Assemble the validated EntryExitPlan, clamping levels and confidence."""
+    """Resolve the LLM's categorical picks into the full plan."""
     cl = packet.candidate_levels
+    picks = _resolve_picks(raw, cl)
 
-    entry_zone = _clamp_zone(raw["entry_zone"], _all_entry_candidates(cl))
-    pullback_entry_zone = (
-        _clamp_zone(raw["pullback_entry_zone"], _all_entry_candidates(cl))
-        if "pullback_entry_zone" in raw and raw["pullback_entry_zone"]
-        else None
-    )
-    exit_zone_primary = _clamp_zone(raw["exit_zone_primary"], cl.primary_exit_candidates)
+    entry_zone = _entry_zone(cl, picks.entry_kind)
+    exit_zone_primary = cl.primary_exit_candidates[picks.primary_index]
     exit_zone_runner = (
-        _clamp_zone(raw["exit_zone_runner"], cl.runner_exit_candidates)
-        if "exit_zone_runner" in raw and raw["exit_zone_runner"]
+        cl.runner_exit_candidates[picks.runner_index]
+        if picks.runner_index is not None
         else None
     )
-    invalidation = _clamp_invalidation(raw["invalidation"], cl.invalidation_candidates)
-    # Enforce minimum risk: stop must be ≥ MIN_RISK_ATR_MULTIPLE × ATR below entry low.
-    # Without this, an LLM choosing a stop inside / barely below the entry zone
-    # produces nonsense R/R (we observed AAPL coming back with R/R 87 once
-    # because risk was $0.30 on a $6 ATR stock).
-    atr = cl.atr_14
-    if atr is not None and atr > 0:
-        min_distance = MIN_RISK_ATR_MULTIPLE * atr
-        floor = entry_zone.low - min_distance
-        if invalidation > floor:
-            log.info(
-                "research.quick.invalidation_floor",
-                raw=invalidation,
-                floored=floor,
-                atr=atr,
-                entry_low=entry_zone.low,
-            )
-            invalidation = floor
+    invalidation = float(cl.invalidation_candidates[picks.invalidation_index])
 
     confidence = _bound_confidence(
         raw_confidence=raw["confidence"],
         rubric_confidence=packet.view.status.confidence,
     )
 
-    rr_primary = _risk_reward(entry_zone, exit_zone_primary, invalidation)
+    rr_primary = _rr(entry_zone, exit_zone_primary, invalidation)
     rr_runner = (
-        _risk_reward(entry_zone, exit_zone_runner, invalidation)
+        _rr(entry_zone, exit_zone_runner, invalidation)
         if exit_zone_runner is not None
         else None
     )
     rr_blended = blended_risk_reward(rr_primary=rr_primary, rr_runner=rr_runner)
+
+    distribution = compute_rr_distribution(cl, picks)
 
     lenses = _build_lenses(raw.get("lenses"))
 
@@ -504,20 +464,24 @@ def _build_plan(
     )
 
     sources = list(packet.sources_used)
-    if packet.view.valuation.forward_pe is not None or packet.view.valuation.market_cap is not None:
+    if (
+        packet.view.valuation.forward_pe is not None
+        or packet.view.valuation.market_cap is not None
+    ):
         sources.append("fundamentals")
 
     return EntryExitPlan(
         ticker=packet.ticker,
         as_of=packet.as_of,
         entry_zone=entry_zone,
-        pullback_entry_zone=pullback_entry_zone,
+        pullback_entry_zone=None,  # one entry per plan now
         exit_zone_primary=exit_zone_primary,
         exit_zone_runner=exit_zone_runner,
         invalidation=invalidation,
         risk_reward_primary=rr_primary,
         risk_reward_runner=rr_runner,
         plan_r_r_blended=rr_blended,
+        r_r_distribution=distribution,
         confidence=confidence,
         timeframe=raw["timeframe"],
         bull_case=list(raw.get("bull_case", [])),
@@ -530,6 +494,62 @@ def _build_plan(
         sources_used=sources,
         agent_trace=[note],
     )
+
+
+def _resolve_picks(raw: dict[str, Any], cl: Any) -> Picks:
+    """Validate + clamp categorical picks. Falls back to whatever's available."""
+    entry_kind = raw.get("entry_kind", "breakout")
+    if entry_kind not in ("breakout", "pullback"):
+        entry_kind = "breakout"
+    if entry_kind == "breakout" and cl.breakout_entry is None:
+        entry_kind = "pullback"
+    elif entry_kind == "pullback" and cl.pullback_entry is None:
+        entry_kind = "breakout"
+    if cl.breakout_entry is None and cl.pullback_entry is None:
+        raise RuntimeError("No entry candidates available; cannot build plan.")
+
+    primary_idx = _clamp_index(
+        raw.get("primary_exit_index", 0), len(cl.primary_exit_candidates)
+    )
+    runner_raw = raw.get("runner_exit_index")
+    if runner_raw is None or not cl.runner_exit_candidates:
+        runner_idx: int | None = None
+    else:
+        runner_idx = _clamp_index(runner_raw, len(cl.runner_exit_candidates))
+    inv_idx = _clamp_index(
+        raw.get("invalidation_index", 0), len(cl.invalidation_candidates)
+    )
+
+    return Picks(
+        entry_kind=entry_kind,
+        primary_index=primary_idx,
+        runner_index=runner_idx,
+        invalidation_index=inv_idx,
+    )
+
+
+def _entry_zone(cl: Any, entry_kind: str) -> ZoneBand:
+    if entry_kind == "breakout" and cl.breakout_entry is not None:
+        return cl.breakout_entry
+    if cl.pullback_entry is not None:
+        return cl.pullback_entry
+    raise RuntimeError("No matching entry candidate")
+
+
+def _clamp_index(value: int, n: int) -> int:
+    if n <= 0:
+        raise RuntimeError("No candidates to pick from.")
+    return max(0, min(int(value), n - 1))
+
+
+def _rr(entry: ZoneBand, exit_: ZoneBand, invalidation: float) -> float:
+    risk = entry.low - invalidation
+    if risk <= 0:
+        return 0.0
+    reward = exit_.low - entry.high
+    if reward <= 0:
+        return 0.0
+    return round(reward / risk, 2)
 
 
 def _build_lenses(raw: list[dict[str, Any]] | None) -> list[LensView]:
@@ -562,55 +582,6 @@ def _build_lenses(raw: list[dict[str, Any]] | None) -> list[LensView]:
     return out
 
 
-def _all_entry_candidates(cl: Any) -> list[ZoneBand]:
-    out: list[ZoneBand] = []
-    if cl.breakout_entry:
-        out.append(cl.breakout_entry)
-    if cl.pullback_entry:
-        out.append(cl.pullback_entry)
-    return out
-
-
-def _clamp_zone(raw: dict[str, Any], candidates: list[ZoneBand]) -> ZoneBand:
-    """Force `raw.low` / `raw.high` within ±LEVEL_EDIT_TOLERANCE of the
-    nearest candidate. If `candidates` is empty, accept the raw band as-is.
-    """
-    z = ZoneBand(
-        low=float(raw["low"]),
-        high=float(raw["high"]),
-        method=str(raw.get("method", "")),
-        rationale=str(raw.get("rationale", "")),
-    )
-    if not candidates:
-        return z
-    nearest = _nearest_candidate(z, candidates)
-    z.low = _clamp_value(z.low, nearest.low)
-    z.high = _clamp_value(z.high, nearest.high)
-    if z.low > z.high:
-        z.low, z.high = z.high, z.low
-    return z
-
-
-def _nearest_candidate(z: ZoneBand, candidates: list[ZoneBand]) -> ZoneBand:
-    midpoint = (z.low + z.high) / 2
-    return min(candidates, key=lambda c: abs((c.low + c.high) / 2 - midpoint))
-
-
-def _clamp_value(value: float, anchor: float) -> float:
-    if anchor == 0:
-        return value
-    lo = anchor * (1 - LEVEL_EDIT_TOLERANCE)
-    hi = anchor * (1 + LEVEL_EDIT_TOLERANCE)
-    return max(lo, min(hi, value))
-
-
-def _clamp_invalidation(value: float, candidates: list[float]) -> float:
-    if not candidates:
-        return float(value)
-    nearest = min(candidates, key=lambda c: abs(c - value))
-    return _clamp_value(float(value), nearest)
-
-
 def _bound_confidence(*, raw_confidence: str, rubric_confidence: str) -> str:
     """Confidence ≤ rubric_confidence. CONFIDENCE_LEVELS = ('low','medium','high')."""
     if raw_confidence not in CONFIDENCE:
@@ -619,16 +590,6 @@ def _bound_confidence(*, raw_confidence: str, rubric_confidence: str) -> str:
         rubric_confidence = "low"
     levels = list(CONFIDENCE)  # ('low', 'medium', 'high')
     return levels[min(levels.index(raw_confidence), levels.index(rubric_confidence))]
-
-
-def _risk_reward(entry: ZoneBand, exit_: ZoneBand, invalidation: float) -> float:
-    risk = entry.low - invalidation
-    if risk <= 0:
-        return 0.0
-    reward = exit_.low - entry.high
-    if reward <= 0:
-        return 0.0
-    return round(reward / risk, 2)
 
 
 __all__ = ["QuickResult", "quick_tool_input_schema", "run"]

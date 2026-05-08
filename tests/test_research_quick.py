@@ -31,7 +31,7 @@ from app.models import Base
 from app.research import cache as plan_cache
 from app.research.context import ResearchPacket
 from app.research.exits import build_candidate_levels
-from app.research.quick import LEVEL_EDIT_TOLERANCE, run
+from app.research.quick import run
 from app.research.schema import LENS_NAMES, blended_risk_reward
 
 
@@ -180,39 +180,37 @@ class _FakeClient:
 def test_quick_run_returns_validated_plan():
     packet = _stub_packet()
     raw = {
-        "entry_zone": {
-            "low": 108.0,
-            "high": 109.0,
-            "method": "63-bar high band",
-            "rationale": "breakout",
-        },
-        "exit_zone_primary": {
-            "low": 105.0,
-            "high": 105.5,
-            "method": "resistance + ATR",
-            "rationale": "first resistance test",
-        },
-        "invalidation": 104.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "Breakout above 63d pivot.",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "First test of overhead supply.",
+        "invalidation_index": 0,
+        "invalidation_rationale": "Below entry support.",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["bull a"],
         "bear_case": ["bear a"],
         "key_risks": ["risk a"],
+        "lenses": _stub_lenses(),
     }
     client = _FakeClient(raw)
     result = run(packet, client=client)
     assert result.plan.ticker == "AAPL"
-    assert result.plan.entry_zone.low == 108.0
-    assert result.plan.exit_zone_primary.low == 105.0
-    assert result.plan.invalidation == 104.0
+    # Numeric levels are pulled VERBATIM from CandidateLevels — no clamp.
+    assert result.plan.entry_zone == packet.candidate_levels.breakout_entry
+    assert result.plan.exit_zone_primary == packet.candidate_levels.primary_exit_candidates[0]
+    assert result.plan.invalidation == packet.candidate_levels.invalidation_candidates[0]
     assert result.plan.confidence == "high"
     assert result.plan.timeframe == "5-15d"
     assert result.plan.cost_usd > 0
     assert result.plan.duration_ms >= 0
     assert result.plan.mode == "quick"
     assert result.plan.agent_trace[0].agent == "quick"
-    # Disclaimer is preserved.
     assert "decision support" in result.plan.disclaimer.lower()
+    assert result.plan.r_r_distribution is not None
+    assert result.plan.r_r_distribution.n_combos > 0
+    chosen = [c for c in result.plan.r_r_distribution.combos if c.is_chosen]
+    assert len(chosen) == 1
 
 
 def test_quick_passes_temperature_zero_to_anthropic():
@@ -223,9 +221,12 @@ def test_quick_passes_temperature_zero_to_anthropic():
     """
     packet = _stub_packet()
     raw = {
-        "entry_zone": {"low": 108.0, "high": 109.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 105.0, "high": 105.5, "method": "x", "rationale": "x"},
-        "invalidation": 104.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
@@ -237,92 +238,49 @@ def test_quick_passes_temperature_zero_to_anthropic():
 
 
 # ---------------------------------------------------------------------------
-# Hallucination guard: ±15% level clamp
+# Robustness: graceful degradation against malformed LLM picks
 
 
-def test_quick_clamps_entry_zone_far_from_candidate():
+def test_quick_invalid_entry_kind_falls_back_to_first_available():
+    """If the LLM picks an entry_kind that isn't available, fall back to
+    whichever entry candidate IS available — no exception."""
     packet = _stub_packet()
-    # LLM tries to push the entry to 90 — far below the 108-109 candidate.
-    # Should be clamped to anchor * (1 - 0.15) = 91.8 / 92.65, not 90.
+    # Force only pullback to be available.
+    packet.candidate_levels.breakout_entry = None
     raw = {
-        "entry_zone": {
-            "low": 90.0,
-            "high": 92.0,
-            "method": "fabricated",
-            "rationale": "trying to bend reality",
-        },
-        "exit_zone_primary": {
-            "low": 105.0,
-            "high": 105.5,
-            "method": "resistance",
-            "rationale": "ok",
-        },
-        "invalidation": 104.0,
-        "confidence": "high",
-        "timeframe": "5-15d",
-        "bull_case": ["a"],
-        "bear_case": ["a"],
-        "key_risks": ["a"],
-    }
-    client = _FakeClient(raw)
-    plan = run(packet, client=client).plan
-    # Nearest entry candidate is the pullback (98-100). Lower clamp = 98 * 0.85 = 83.3,
-    # so 90 is within [83.3, 113.0] and is allowed. But the high (92) gets clamped
-    # against the 100 anchor: hi range = [85, 115], 92 is in range. Test instead
-    # the more aggressive case below.
-    assert plan.entry_zone.low <= plan.entry_zone.high
-    # A more aggressive deviation is the next test.
-
-
-def test_quick_clamps_extreme_entry_high_above_anchor():
-    packet = _stub_packet()
-    # 200 is way above any candidate. Anchors are 108-109 and 98-100. Nearest
-    # by midpoint to (200, 200) is the breakout (108.5). High clamp =
-    # 109 * 1.15 = 125.35.
-    raw = {
-        "entry_zone": {
-            "low": 200.0,
-            "high": 200.0,
-            "method": "fabricated high",
-            "rationale": "overreach",
-        },
-        "exit_zone_primary": {
-            "low": 105.0,
-            "high": 105.5,
-            "method": "resistance",
-            "rationale": "ok",
-        },
-        "invalidation": 104.0,
-        "confidence": "high",
-        "timeframe": "5-15d",
-        "bull_case": ["a"],
-        "bear_case": ["a"],
-        "key_risks": ["a"],
-    }
-    plan = run(packet, client=_FakeClient(raw)).plan
-    expected_max = 109.0 * (1 + LEVEL_EDIT_TOLERANCE)
-    assert plan.entry_zone.high <= expected_max + 1e-6
-
-
-def test_quick_clamps_invalidation_to_nearest_candidate():
-    packet = _stub_packet()
-    raw = {
-        "entry_zone": {
-            "low": 108.0, "high": 109.0, "method": "x", "rationale": "x",
-        },
-        "exit_zone_primary": {
-            "low": 105.0, "high": 105.5, "method": "x", "rationale": "x",
-        },
-        "invalidation": 50.0,  # absurdly far below all candidates
+        "entry_kind": "breakout",  # not available!
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
         "lenses": _stub_lenses(),
     }
     plan = run(packet, client=_FakeClient(raw)).plan
-    # Nearest invalidation candidate to 50 is the lowest one (base_low - 0.5×ATR
-    # = 80 - 1 = 79). Lower clamp = 79 * 0.85 = 67.15. So 50 → 67.15.
-    assert 60.0 < plan.invalidation < 100.0
+    assert plan.entry_zone == packet.candidate_levels.pullback_entry
+
+
+def test_quick_out_of_range_primary_index_clamps_to_last():
+    """LLM emits an out-of-range index → clamp to the nearest valid index."""
+    packet = _stub_packet()
+    raw = {
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 99,  # out of range
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
+        "confidence": "high",
+        "timeframe": "5-15d",
+        "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
+        "lenses": _stub_lenses(),
+    }
+    plan = run(packet, client=_FakeClient(raw)).plan
+    last = packet.candidate_levels.primary_exit_candidates[-1]
+    assert plan.exit_zone_primary == last
 
 
 # ---------------------------------------------------------------------------
@@ -332,9 +290,12 @@ def test_quick_clamps_invalidation_to_nearest_candidate():
 def test_quick_confidence_bounded_by_low_rubric():
     packet = _stub_packet(status_conf="low")
     raw = {
-        "entry_zone": {"low": 108.0, "high": 109.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 105.0, "high": 105.5, "method": "x", "rationale": "x"},
-        "invalidation": 104.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",  # LLM says high
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
@@ -348,9 +309,12 @@ def test_quick_confidence_bounded_by_low_rubric():
 def test_quick_confidence_unchanged_when_within_bound():
     packet = _stub_packet(status_conf="high")
     raw = {
-        "entry_zone": {"low": 108.0, "high": 109.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 105.0, "high": 105.5, "method": "x", "rationale": "x"},
-        "invalidation": 104.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "medium",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
@@ -364,20 +328,23 @@ def test_quick_confidence_unchanged_when_within_bound():
 # Risk/reward derivation
 
 
-def test_quick_risk_reward_computed_from_clamped_levels():
+def test_quick_risk_reward_computed_from_resolved_levels():
     packet = _stub_packet()
     raw = {
-        "entry_zone": {"low": 100.0, "high": 100.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 110.0, "high": 110.0, "method": "x", "rationale": "x"},
-        "invalidation": 95.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
         "lenses": _stub_lenses(),
     }
     plan = run(packet, client=_FakeClient(raw)).plan
-    # entry 100 to inval 95: risk 5. entry-high 100 to exit-low 110: reward 10.
-    # The clamp may move things; assert R/R is in a reasonable range.
+    # R/R is computed from the deterministic candidate levels — never negative,
+    # and matches a direct calc on the resolved zones.
     assert plan.risk_reward_primary >= 0
 
 
@@ -400,9 +367,12 @@ def session() -> Session:
 def test_cache_store_then_get(session: Session):
     packet = _stub_packet()
     raw = {
-        "entry_zone": {"low": 108.0, "high": 109.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 105.0, "high": 105.5, "method": "x", "rationale": "x"},
-        "invalidation": 104.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
@@ -432,10 +402,14 @@ def test_cache_miss_returns_none(session: Session):
 def test_quick_emits_four_lenses_with_directions():
     packet = _stub_packet()
     raw = {
-        "entry_zone": {"low": 108.0, "high": 109.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 105.0, "high": 105.5, "method": "x", "rationale": "x"},
-        "exit_zone_runner": {"low": 115.0, "high": 116.0, "method": "x", "rationale": "x"},
-        "invalidation": 104.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "runner_exit_index": 0,
+        "runner_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
@@ -463,19 +437,23 @@ def test_quick_emits_four_lenses_with_directions():
 def test_quick_computes_blended_r_r_when_runner_present():
     packet = _stub_packet()
     raw = {
-        "entry_zone": {"low": 100.0, "high": 100.0, "method": "x", "rationale": "x"},
-        "exit_zone_primary": {"low": 105.0, "high": 105.0, "method": "x", "rationale": "x"},
-        "exit_zone_runner": {"low": 115.0, "high": 115.0, "method": "x", "rationale": "x"},
-        "invalidation": 95.0,
+        "entry_kind": "breakout",
+        "entry_rationale": "x",
+        "primary_exit_index": 0,
+        "primary_exit_rationale": "x",
+        "runner_exit_index": 0,
+        "runner_exit_rationale": "x",
+        "invalidation_index": 0,
+        "invalidation_rationale": "x",
         "confidence": "high",
         "timeframe": "5-15d",
         "bull_case": ["a"], "bear_case": ["a"], "key_risks": ["a"],
         "lenses": _stub_lenses(),
     }
     plan = run(packet, client=_FakeClient(raw)).plan
-    # primary and runner R/R get computed first; blended is the weighted
-    # average using the default 1/3 - 2/3 split. We assert the blend exists
-    # and is bounded by the two extremes (allowing for ±15% level clamping).
+    # primary and runner R/R get computed from resolved levels; blended is the
+    # weighted average using the default 1/3 - 2/3 split. Bounded by the two
+    # extremes.
     assert plan.plan_r_r_blended is not None
     rr_min = min(plan.risk_reward_primary, plan.risk_reward_runner or 0)
     rr_max = max(plan.risk_reward_primary, plan.risk_reward_runner or 0)
