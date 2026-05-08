@@ -87,6 +87,31 @@ def run(
             ],
         )
 
+    # Persist lens snapshots for later accuracy scoring (Phase 1).
+    # plan_id is None here — the cache layer assigns ids after the judge
+    # synthesises. Recording is idempotent so a future "link plan_id"
+    # backfill is a separate concern.
+    from app.db import session_scope  # local import to avoid cycle at module load
+    from app.research.lens_recording import record_lens_snapshots
+
+    durations = [ar.duration_ms for ar in analyst_results if ar.lens is not None]
+    costs = [ar.cost_usd for ar in analyst_results if ar.lens is not None]
+    try:
+        with session_scope() as recording_session:
+            record_lens_snapshots(
+                recording_session,
+                plan_id=None,
+                ticker=packet.ticker,
+                as_of=packet.as_of,
+                mode="deep",
+                lenses=lenses,
+                sources_used=packet.sources_used,
+                durations_ms=durations,
+                costs_usd=costs,
+            )
+    except Exception as e:
+        log.warning("research.deep.lens_recording_failed", error=str(e))
+
     # 2. Sonnet judge synthesises the lenses + picks final levels.
     judge_result = run_judge(
         packet=packet,
