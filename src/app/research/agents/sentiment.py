@@ -15,8 +15,14 @@ project. Make the most of it.
 
 from __future__ import annotations
 
-from app.research.agents.base import AgentResult, run_agent
+from app.research.agents.base import (
+    AgentResult,
+    _format_other_lenses,
+    run_agent,
+    run_revision,
+)
 from app.research.context import ResearchPacket
+from app.research.schema import LensView
 
 SYSTEM_PROMPT = """\
 You are the Sentiment / Macro analyst on a four-lens swing-trading research \
@@ -114,4 +120,58 @@ def _fmt(value, digits: int = 2) -> str:
     return f"{value:.{digits}f}"
 
 
-__all__ = ["run_sentiment"]
+REVISION_SYSTEM_PROMPT = """\
+You are the Sentiment-Macro analyst on a four-lens swing-trading panel. \
+You already submitted a round-1 read on creator claims / flow / catalysts \
+/ macro regime. Now you see the OTHER THREE analysts' round-1 reads. Your \
+job: revise YOUR read if their evidence changes your analysis.
+- Stay in your lane: claims, positioning, catalyst proximity, macro tone. \
+  Do not pivot into pure technicals or valuation.
+- Engage with whether the other lenses' reads alter the SENTIMENT picture \
+  (e.g. "Quant's bullish breakout aligns with my creator-flow read; \
+  conviction reinforced").
+- It is FINE to stand pat with `responded_to=[]` if their reads don't \
+  bear on sentiment.
+- Submit via submit_revised_lens.
+"""
+
+
+REVISION_USER_TEMPLATE = """\
+Your round-1 read:
+- direction: {round_one_direction}
+- conviction: {round_one_conviction}
+- summary: {round_one_summary}
+- points:
+{round_one_points}
+
+OTHER LENSES (round 1):
+{others_block}
+
+Revise your read via submit_revised_lens.
+"""
+
+
+def run_sentiment_revision(
+    packet: ResearchPacket,
+    *,
+    round_one_lens: LensView,
+    others: list[LensView],
+    client=None,
+) -> AgentResult:
+    user_prompt = REVISION_USER_TEMPLATE.format(
+        round_one_direction=round_one_lens.direction,
+        round_one_conviction=round_one_lens.conviction,
+        round_one_summary=round_one_lens.summary,
+        round_one_points="\n".join(f"- {p}" for p in round_one_lens.points),
+        others_block=_format_other_lenses(others),
+    )
+    return run_revision(
+        agent_name="sentiment_macro",
+        system_prompt=REVISION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        round_one_lens=round_one_lens,
+        client=client,
+    )
+
+
+__all__ = ["run_sentiment", "run_sentiment_revision"]

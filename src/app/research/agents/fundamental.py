@@ -11,8 +11,14 @@ cheap relative to its growth" as a standalone read.
 
 from __future__ import annotations
 
-from app.research.agents.base import AgentResult, run_agent
+from app.research.agents.base import (
+    AgentResult,
+    _format_other_lenses,
+    run_agent,
+    run_revision,
+)
 from app.research.context import ResearchPacket
+from app.research.schema import LensView
 
 SYSTEM_PROMPT = """\
 You are the Fundamental analyst on a four-lens swing-trading research panel. \
@@ -134,4 +140,60 @@ def _fmt_count(v) -> str:
     return f"{v:.0f}"
 
 
-__all__ = ["run_fundamental"]
+REVISION_SYSTEM_PROMPT = """\
+You are the Fundamental analyst on a four-lens swing-trading panel. You \
+already submitted a round-1 read on valuation / growth / sector context. \
+Now you see the OTHER THREE analysts' round-1 reads. Your job: revise YOUR \
+read if their evidence changes your analysis.
+- Stay in your lane: forward earnings, valuation multiples, sector / \
+  industry context, growth quality, margin trajectory.
+- DO NOT pivot into technicals or sentiment commentary — note their reads \
+  in `responded_to` but keep your `revised_summary` and `revised_points` \
+  rooted in fundamentals.
+- It is FINE to leave direction / conviction unchanged; an honest \
+  "considered the technical read but my fundamental concerns stand" is a \
+  valid revision.
+- Cite specific numbers from the packet when relevant.
+- Submit via submit_revised_lens.
+"""
+
+
+REVISION_USER_TEMPLATE = """\
+Your round-1 read:
+- direction: {round_one_direction}
+- conviction: {round_one_conviction}
+- summary: {round_one_summary}
+- points:
+{round_one_points}
+
+OTHER LENSES (round 1):
+{others_block}
+
+Revise your read via submit_revised_lens.
+"""
+
+
+def run_fundamental_revision(
+    packet: ResearchPacket,
+    *,
+    round_one_lens: LensView,
+    others: list[LensView],
+    client=None,
+) -> AgentResult:
+    user_prompt = REVISION_USER_TEMPLATE.format(
+        round_one_direction=round_one_lens.direction,
+        round_one_conviction=round_one_lens.conviction,
+        round_one_summary=round_one_lens.summary,
+        round_one_points="\n".join(f"- {p}" for p in round_one_lens.points),
+        others_block=_format_other_lenses(others),
+    )
+    return run_revision(
+        agent_name="fundamental",
+        system_prompt=REVISION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        round_one_lens=round_one_lens,
+        client=client,
+    )
+
+
+__all__ = ["run_fundamental", "run_fundamental_revision"]
