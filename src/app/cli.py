@@ -422,6 +422,14 @@ def scan(
         False, "--no-persist", help="Skip writing ResearchSnapshot rows."
     ),
     json_out: bool = typer.Option(False, "--json"),
+    rerank: bool = typer.Option(
+        False,
+        "--rerank",
+        help=(
+            "Run reduced 2-lens panel + Sonnet judge per ticker "
+            "(~$0.01-0.015 each). Adds RANK + RATIONALE columns."
+        ),
+    ),
 ) -> None:
     """Run research views for a batch of tickers; print a ranked table.
 
@@ -473,21 +481,42 @@ def scan(
             fetch_metadata=not no_metadata,
         )
 
+    rerank_by_ticker: dict[str, object] = {}
+    if rerank:
+        from app.research.scan_rerank import rerank_tickers
+
+        typer.echo(f"reranking {len(ticker_list)} ticker(s)…")
+        rerank_results = rerank_tickers(ticker_list)
+        rerank_by_ticker = {r.ticker: r for r in rerank_results}
+
     if json_out:
-        typer.echo(result.model_dump_json(indent=2))
+        payload = result.model_dump(mode="json")
+        if rerank_by_ticker:
+            for row in payload.get("rows", []):
+                rr = rerank_by_ticker.get(row["ticker"])
+                if rr is not None:
+                    row["rank"] = rr.rank
+                    row["rationale"] = rr.rationale
+                    row["rerank_cost_usd"] = rr.cost_usd
+        import json as _json
+
+        typer.echo(_json.dumps(payload, indent=2, default=str))
         return
 
-    _print_scan_table(result)
+    _print_scan_table(result, rerank_by_ticker=rerank_by_ticker)
 
 
-def _print_scan_table(result) -> None:  # noqa: ANN001
-    """Compact table output for `tsr scan`."""
+def _print_scan_table(result, rerank_by_ticker: dict | None = None) -> None:  # noqa: ANN001
+    """Compact table output for `tsr scan`. Optional rerank columns when
+    `rerank_by_ticker` is supplied (maps ticker -> ScanRerankResult)."""
 
     def pct(v, d=1):
         return "—" if v is None else f"{v * 100:+.{d}f}%"
 
     def num(v, d=1):
         return "—" if v is None else f"{v:.{d}f}"
+
+    show_rerank = bool(rerank_by_ticker)
 
     typer.echo("")
     typer.echo(
@@ -506,6 +535,8 @@ def _print_scan_table(result) -> None:  # noqa: ANN001
         f"{'5d':>7}  {'rsi':>5}  {'atr%':>6}  {'rs63':>7}  {'pullbk':>7}  "
         f"{'brkdst':>7}  {'rr':>5}  {'tx':<3}"
     )
+    if show_rerank:
+        header += f"  {'rank':<7}  {'rationale':<60}"
     typer.echo(header)
     typer.echo(f"  {'-' * (len(header) - 2)}")
     for r in result.rows:
@@ -515,7 +546,7 @@ def _print_scan_table(result) -> None:  # noqa: ANN001
             else "·" if r.transcript_n_claims + r.transcript_n_calls > 0
             else " "
         )
-        typer.echo(
+        line = (
             f"  {r.ticker:<6}  "
             f"{(r.status + ' (' + r.status_confidence[0].upper() + ')'):<20}  "
             f"{r.setup_type:<22}  "
@@ -529,9 +560,19 @@ def _print_scan_table(result) -> None:  # noqa: ANN001
             f"{num(r.risk_reward_estimate, 1):>5}  "
             f"{tx:<3}"
         )
+        if show_rerank:
+            rr = rerank_by_ticker.get(r.ticker) if rerank_by_ticker else None
+            if rr is None:
+                line += f"  {'—':<7}  {'—':<60}"
+            else:
+                rationale = (rr.rationale or "")[:60]
+                line += f"  {rr.rank:<7}  {rationale:<60}"
+        typer.echo(line)
     typer.echo("")
     typer.echo("  legend: status = research_candidate / watch / wait_for_setup / skip_for_now / extended_risk / insufficient_data")
     typer.echo("          tx = transcript: ✓ confirms, ✗ contradicts, · present-but-irrelevant, blank = no transcript data")
+    if show_rerank:
+        typer.echo("          rank = rerank judge priority: high / medium / low / skip")
     typer.echo("")
 
 
