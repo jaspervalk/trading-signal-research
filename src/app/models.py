@@ -950,3 +950,82 @@ class ResearchPlan(Base):
             f"<ResearchPlan {self.ticker} {self.mode} day={self.day_key} "
             f"conf={self.confidence} ${self.cost_usd:.4f}>"
         )
+
+
+# --- Phase 1 (lens accuracy infra): per-lens snapshots + outcomes ----------
+
+
+class LensSnapshot(Base):
+    """One row per (Deep|Quick run × lens). Captures the lens's direction
+    call at decision time so realised outcomes can be attributed back to
+    individual lenses (Phase 1 lens accuracy scorecards).
+    """
+
+    __tablename__ = "lens_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "ticker", "as_of", "mode", "lens_name",
+            name="uq_lens_snapshot_run",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("research_plans.id", ondelete="SET NULL"),
+        index=True,
+    )
+    ticker: Mapped[str] = mapped_column(String(16), index=True)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    mode: Mapped[str] = mapped_column(String(8))  # 'quick' | 'deep'
+    lens_name: Mapped[str] = mapped_column(String(32), index=True)
+    direction: Mapped[str] = mapped_column(String(8))  # 'bullish' | 'bearish' | 'neutral'
+    conviction: Mapped[str] = mapped_column(String(8))  # 'low' | 'medium' | 'high'
+    summary: Mapped[str] = mapped_column(Text)
+    points_json: Mapped[str] = mapped_column(Text)  # JSON array of strings
+    sources_used: Mapped[str] = mapped_column(Text)  # JSON array
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<LensSnapshot {self.ticker} {self.mode}/{self.lens_name} "
+            f"{self.direction}/{self.conviction} as_of={self.as_of:%Y-%m-%d}>"
+        )
+
+
+class LensOutcome(Base):
+    """Realised return + direction-correct flag for a (LensSnapshot × horizon).
+
+    Computed retroactively once price history is available for the horizon.
+    """
+
+    __tablename__ = "lens_outcomes"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "horizon",
+            name="uq_lens_outcome_horizon",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("lens_snapshots.id", ondelete="CASCADE"),
+        index=True,
+    )
+    horizon: Mapped[str] = mapped_column(String(8))  # '1d' | '3d' | '5d' | '21d'
+    return_pct: Mapped[float] = mapped_column(Float)
+    excess_vs_spy_pct: Mapped[float] = mapped_column(Float)
+    direction_correct: Mapped[bool] = mapped_column()
+    regime: Mapped[str] = mapped_column(String(8))  # 'up' | 'flat' | 'down'
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<LensOutcome snap={self.snapshot_id} {self.horizon} "
+            f"ret={self.return_pct:+.2%} correct={self.direction_correct}>"
+        )
