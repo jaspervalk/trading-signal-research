@@ -7,25 +7,14 @@ so the headline R/R is one point in a distribution rather than 'the answer'.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.research.schema import (
     CandidateLevels,
+    Picks,
     RRCombo,
     RRDistribution,
     ZoneBand,
     blended_risk_reward,
 )
-
-
-@dataclass
-class Picks:
-    """The LLM's categorical picks, used to mark the chosen combo."""
-
-    entry_kind: str  # "breakout" | "pullback"
-    primary_index: int
-    runner_index: int | None
-    invalidation_index: int
 
 
 def compute_rr_distribution(
@@ -54,8 +43,8 @@ def compute_rr_distribution(
                     risk = entry.low - inv
                     if risk <= 0:
                         continue
-                    rr_p = _rr(entry, primary, inv)
-                    rr_r = _rr(entry, runner, inv) if runner is not None else None
+                    rr_p = risk_reward(entry, primary, inv)
+                    rr_r = risk_reward(entry, runner, inv) if runner is not None else None
                     rr_b = blended_risk_reward(rr_primary=rr_p, rr_runner=rr_r)
                     if rr_b is None:
                         continue
@@ -103,7 +92,19 @@ def _entries(candidates: CandidateLevels) -> list[tuple[str, ZoneBand]]:
     return out
 
 
-def _rr(entry: ZoneBand, exit_: ZoneBand, invalidation: float) -> float:
+def risk_reward(entry: ZoneBand, exit_: ZoneBand, invalidation: float) -> float:
+    """R/R for a single (entry, exit, invalidation) triple.
+
+    Uses the band edges that make this a *conservative* read: risk =
+    entry.low − invalidation (the deepest you'd pay before entry); reward
+    = exit_.low − entry.high (the nearest take-profit minus the worst
+    fill). Returns 0.0 when the trade is structurally undefined (risk or
+    reward non-positive). Rounded to 2 decimals to match the headline
+    R/R fields on `EntryExitPlan`.
+
+    Shared by `compute_rr_distribution` and the headline R/R math in
+    `quick.py` / `judge.py` so all three reads can never drift.
+    """
     risk = entry.low - invalidation
     if risk <= 0:
         return 0.0
@@ -122,4 +123,4 @@ def _median(values: list[float]) -> float:
     return round((values[n // 2 - 1] + values[n // 2]) / 2, 2)
 
 
-__all__ = ["Picks", "compute_rr_distribution"]
+__all__ = ["Picks", "compute_rr_distribution", "risk_reward"]

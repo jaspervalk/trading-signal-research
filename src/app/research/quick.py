@@ -27,10 +27,11 @@ from app.analysis.schema import CONFIDENCE_LEVELS
 from app.config import load_env
 from app.logging import get_logger
 from app.research.context import ResearchPacket
-from app.research.rr_distribution import Picks, compute_rr_distribution
+from app.research.rr_distribution import Picks, compute_rr_distribution, risk_reward
 from app.research.schema import (
     AgentNote,
     CONFIDENCE,
+    CandidateLevels,
     EntryExitPlan,
     LENS_NAMES,
     LensView,
@@ -443,9 +444,9 @@ def _build_plan(
         rubric_confidence=packet.view.status.confidence,
     )
 
-    rr_primary = _rr(entry_zone, exit_zone_primary, invalidation)
+    rr_primary = risk_reward(entry_zone, exit_zone_primary, invalidation)
     rr_runner = (
-        _rr(entry_zone, exit_zone_runner, invalidation)
+        risk_reward(entry_zone, exit_zone_runner, invalidation)
         if exit_zone_runner is not None
         else None
     )
@@ -496,7 +497,7 @@ def _build_plan(
     )
 
 
-def _resolve_picks(raw: dict[str, Any], cl: Any) -> Picks:
+def _resolve_picks(raw: dict[str, Any], cl: CandidateLevels) -> Picks:
     """Validate + clamp categorical picks. Falls back to whatever's available."""
     entry_kind = raw.get("entry_kind", "breakout")
     if entry_kind not in ("breakout", "pullback"):
@@ -528,7 +529,7 @@ def _resolve_picks(raw: dict[str, Any], cl: Any) -> Picks:
     )
 
 
-def _entry_zone(cl: Any, entry_kind: str) -> ZoneBand:
+def _entry_zone(cl: CandidateLevels, entry_kind: str) -> ZoneBand:
     if entry_kind == "breakout" and cl.breakout_entry is not None:
         return cl.breakout_entry
     if cl.pullback_entry is not None:
@@ -540,16 +541,6 @@ def _clamp_index(value: int, n: int) -> int:
     if n <= 0:
         raise RuntimeError("No candidates to pick from.")
     return max(0, min(int(value), n - 1))
-
-
-def _rr(entry: ZoneBand, exit_: ZoneBand, invalidation: float) -> float:
-    risk = entry.low - invalidation
-    if risk <= 0:
-        return 0.0
-    reward = exit_.low - entry.high
-    if reward <= 0:
-        return 0.0
-    return round(reward / risk, 2)
 
 
 def _build_lenses(raw: list[dict[str, Any]] | None) -> list[LensView]:

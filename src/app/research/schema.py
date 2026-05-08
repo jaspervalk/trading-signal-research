@@ -6,6 +6,7 @@ All numeric levels are anchored to deterministic candidates (`exits.py`,
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
@@ -89,6 +90,22 @@ class LensView(BaseModel):
     summary: str = ""  # one-line headline read
     points: list[str] = Field(default_factory=list)  # 2-4 supporting bullets
     direction: str = "neutral"  # "bullish" | "bearish" | "neutral" — vote on the trade
+
+
+@dataclass
+class Picks:
+    """The LLM's categorical picks, used to mark the chosen combo.
+
+    Cross-cutting type: emitted by `quick.py` (and the deep-mode judge in
+    `judge.py`) and consumed by `rr_distribution.compute_rr_distribution`.
+    Lives in `schema.py` alongside `RRCombo` / `RRDistribution`; re-exported
+    by `rr_distribution.py` for back-compat with existing imports.
+    """
+
+    entry_kind: str  # "breakout" | "pullback"
+    primary_index: int
+    runner_index: int | None
+    invalidation_index: int
 
 
 class RRCombo(BaseModel):
@@ -215,6 +232,7 @@ __all__ = [
     "LENS_NAMES",
     "LensView",
     "PLAN_MODES",
+    "Picks",
     "RRCombo",
     "RRDistribution",
     "TIMEFRAMES",
