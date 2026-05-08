@@ -535,3 +535,39 @@ def test_deep_run_raises_when_all_analysts_fail():
         deep_mod.run_fundamental = original["fund"]
         deep_mod.run_sentiment = original["sent"]
         deep_mod.run_contrarian = original["cont"]
+
+
+from app.research.schema import LensView
+
+
+def test_lens_view_supports_revised_fields():
+    """Schema supports optional revised_summary / revised_points / responded_to.
+
+    Phase 2 cross-lens debate adds these as a second-round read; absence
+    means no revision happened (legacy plans + toggle-off Deep runs).
+    """
+    lv = LensView(
+        name="quantitative",
+        direction="bullish",
+        conviction="high",
+        summary="initial read",
+        points=["p1"],
+        revised_summary="after seeing fundamental's bear case I'd downgrade",
+        revised_points=["bear case is real but my technicals still hold"],
+        responded_to=["fundamental", "contrarian_risk"],
+    )
+    assert lv.revised_summary == "after seeing fundamental's bear case I'd downgrade"
+    assert lv.responded_to == ["fundamental", "contrarian_risk"]
+
+
+def test_lens_view_revised_fields_default_to_none_or_empty():
+    lv = LensView(
+        name="quantitative",
+        direction="bullish",
+        conviction="high",
+        summary="round-1 only",
+        points=["p1"],
+    )
+    assert lv.revised_summary is None
+    assert lv.revised_points == []
+    assert lv.responded_to == []
