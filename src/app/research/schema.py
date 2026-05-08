@@ -234,6 +234,28 @@ class EntryExitPlan(BaseModel):
     )
 
 
+RANKS = ("high", "medium", "low", "skip")
+
+
+class ScanRerankResult(BaseModel):
+    """Per-ticker output of the watchlist rerank panel.
+
+    Reduced 2-lens panel (Quantitative + Contrarian-Risk) -> small Sonnet
+    rerank judge -> research-priority rank. Used by `tsr scan --rerank` to
+    surface "what's worth deeper research today" beyond rule-based scan.
+    """
+
+    ticker: str
+    as_of: datetime
+    rank: str  # one of RANKS
+    rationale: str  # <=25 words; the judge's 1-line reason for this rank
+    lenses: list[LensView] = Field(default_factory=list)
+    cost_usd: float = 0.0
+    duration_ms: int = 0
+    sources_used: list[str] = Field(default_factory=list)
+    error: str | None = None  # set if the panel failed; rank='skip' in that case
+
+
 __all__ = [
     "AgentNote",
     "CandidateLevels",
@@ -244,8 +266,10 @@ __all__ = [
     "LensView",
     "PLAN_MODES",
     "Picks",
+    "RANKS",
     "RRCombo",
     "RRDistribution",
+    "ScanRerankResult",
     "TIMEFRAMES",
     "ZoneBand",
     "blended_risk_reward",

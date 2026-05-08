@@ -402,3 +402,32 @@ lenses.
 
 **Cost:** +~$0.02 / Deep run when enabled (4 extra Haiku calls at
 temperature=0). Total Deep cost rises from ~$0.04-0.10 to ~$0.06-0.12.
+
+## 15. Watchlist scan reranking (Phase 3 of agent roadmap)
+
+Phase 3 of [docs/superpowers/plans/2026-05-08-lens-agents-roadmap.md](superpowers/plans/2026-05-08-lens-agents-roadmap.md).
+Reduced 2-lens panel + small Sonnet judge per ticker; produces a research-priority
+rank in {high, medium, low, skip} with a ≤25-word rationale. Composes
+with the existing rule-based `tsr scan` to surface "what's worth deeper
+research today" beyond pure-mechanical ranking.
+
+**What landed:**
+
+| Component | File |
+|---|---|
+| `ScanRerankResult` schema + `RANKS` enum | [src/app/research/schema.py](../src/app/research/schema.py) |
+| Sonnet rerank judge | [src/app/research/agents/rerank_judge.py](../src/app/research/agents/rerank_judge.py) |
+| `run_rerank()` orchestrator (Quant + Contrarian → judge) | [src/app/research/rerank.py](../src/app/research/rerank.py) |
+| Batch fan-out (`rerank_tickers()`) | [src/app/research/scan_rerank.py](../src/app/research/scan_rerank.py) |
+| CLI: `tsr scan --rerank` | [src/app/cli.py](../src/app/cli.py) |
+| API: `POST /research/scan-rerank` | [apps/api/app/routes/research.py](../apps/api/app/routes/research.py) |
+
+**Cost:** ~$0.01-0.015 per ticker (2 Haiku + 1 Sonnet, all temperature=0).
+A typical 20-ticker watchlist run is ~$0.20-0.30.
+
+**No caching this phase.** Every invocation hits the Anthropic API.
+Caching at `(ticker, day_key)` is a deliberate Phase-3.5 follow-up if
+daily usage justifies the migration cost.
+
+**No frontend yet.** CLI + JSON API delivery only. Mounting on
+`ScanStatusBoard.tsx` is a follow-up.
