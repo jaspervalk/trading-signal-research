@@ -32,6 +32,15 @@ from app.research.schema import EntryExitPlan, LensView
 log = get_logger(__name__)
 
 
+def _cross_lens_enabled() -> bool:
+    """Read the Phase 2 cross-lens debate toggle. Patched by tests."""
+    try:
+        from app.config import load_project_settings
+        return bool(load_project_settings().research.deep.cross_lens_round)
+    except Exception:
+        return False
+
+
 @dataclass
 class DeepResult:
     """Same shape as `QuickResult` (a `plan` plus a raw response trail).
@@ -86,6 +95,63 @@ def run(
                 if ar.lens is None
             ],
         )
+
+    # Phase 2 — Cross-lens debate: each analyst sees the other three's
+    # round-1 reads and may revise. Toggle: research.deep.cross_lens_round.
+    if _cross_lens_enabled() and len(lenses) >= 2:
+        from app.research.agents.contrarian import run_contrarian_revision
+        from app.research.agents.fundamental import run_fundamental_revision
+        from app.research.agents.sentiment import run_sentiment_revision
+        from app.research.agents.technical import run_technical_revision
+
+        revision_map = {
+            "quantitative": run_technical_revision,
+            "fundamental": run_fundamental_revision,
+            "sentiment_macro": run_sentiment_revision,
+            "contrarian_risk": run_contrarian_revision,
+        }
+        revision_runners: list = []
+        for ar in analyst_results:
+            if ar.lens is None:
+                continue
+            others = [
+                other.lens for other in analyst_results
+                if other.lens is not None and other.agent_name != ar.agent_name
+            ]
+            runner = revision_map.get(ar.lens.name)
+            if runner is None:
+                continue
+            revision_runners.append(
+                lambda r=runner, o=others, rl=ar.lens, p=packet, c=client:
+                    r(p, round_one_lens=rl, others=o, client=c)
+            )
+
+        if revision_runners:
+            revision_results = run_agents_parallel(revision_runners)
+            revised_by_name = {
+                ar.agent_name: ar.lens
+                for ar in revision_results
+                if ar.lens is not None
+            }
+            # Replace round-1 lens with revised one (or keep round-1 on error).
+            lenses = [
+                revised_by_name.get(lens.name, lens) for lens in lenses
+            ]
+            # Track total round-2 cost/duration so the audit reflects it, and
+            # propagate the revised lens onto analyst_results so downstream
+            # (recording, judge trace) sees the revised view.
+            for rr in revision_results:
+                for ar in analyst_results:
+                    if ar.agent_name == rr.agent_name and ar.lens is not None:
+                        ar.cost_usd += rr.cost_usd
+                        ar.duration_ms += rr.duration_ms
+                        ar.lens = revised_by_name.get(ar.agent_name, ar.lens)
+                        break
+            log.info(
+                "research.deep.round_two_complete",
+                n_revised=len(revised_by_name),
+                n_total=len(revision_runners),
+            )
 
     # Persist lens snapshots for later accuracy scoring (Phase 1).
     # plan_id is None here — the cache layer assigns ids after the judge

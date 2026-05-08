@@ -74,6 +74,28 @@ function LensCard({ lens }: { lens: LensView }) {
           ))}
         </ul>
       )}
+      {lens.revised_summary ? (
+        <div className="mt-3 pt-2 border-t border-[var(--hairline-2)] space-y-1">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--accent)]">
+            Revised after debate
+          </div>
+          <p className="text-xs text-[var(--foreground)] leading-relaxed">
+            {lens.revised_summary}
+          </p>
+          {lens.revised_points && lens.revised_points.length > 0 && (
+            <ul className="space-y-0.5 text-[11px] text-[var(--muted-foreground)]">
+              {lens.revised_points.map((p, i) => (
+                <li key={i}>· {p}</li>
+              ))}
+            </ul>
+          )}
+          {lens.responded_to && lens.responded_to.length > 0 && (
+            <div className="text-[10px] uppercase tracking-wider text-[var(--muted-2)]">
+              Responded to: {lens.responded_to.join(", ")}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

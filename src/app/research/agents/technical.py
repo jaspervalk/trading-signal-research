@@ -11,8 +11,14 @@ here would give the user one big mush instead of four independent reads.
 
 from __future__ import annotations
 
-from app.research.agents.base import AgentResult, run_agent
+from app.research.agents.base import (
+    AgentResult,
+    _format_other_lenses,
+    run_agent,
+    run_revision,
+)
 from app.research.context import ResearchPacket
+from app.research.schema import LensView
 
 SYSTEM_PROMPT = """\
 You are the Quantitative analyst on a four-lens swing-trading research panel. \
@@ -128,4 +134,64 @@ def _fmt_pct(value) -> str:
     return f"{value * 100:+.2f}%"
 
 
-__all__ = ["run_technical"]
+REVISION_SYSTEM_PROMPT = """\
+You are the Quantitative analyst on a four-lens swing-trading panel. You \
+already submitted a round-1 read. Now you see the OTHER THREE analysts' \
+round-1 reads. Your job: revise YOUR read if their evidence changes your \
+analysis. Specifically:
+- Engage with their reads where relevant — name which lenses you're \
+  responding to via `responded_to`.
+- It is FINE to leave your direction / conviction unchanged; just \
+  acknowledge in `revised_summary` that you considered the other reads.
+- DO NOT mimic their disciplines — stay in your lane (technicals, factor \
+  exposure, momentum). You can NOTE that fundamental lens is bearish, but \
+  don't suddenly start citing PEG ratios.
+- `revised_summary`: short (1-2 sentences) headline of your revised read.
+- `revised_points`: 1-4 bullets supporting the revised read.
+- `responded_to`: lens names ('fundamental', 'sentiment_macro', \
+  'contrarian_risk') you specifically engaged with. Empty list = standing \
+  pat without addressing any other lens.
+
+Submit via submit_revised_lens.
+"""
+
+
+REVISION_USER_TEMPLATE = """\
+Your round-1 read:
+- direction: {round_one_direction}
+- conviction: {round_one_conviction}
+- summary: {round_one_summary}
+- points:
+{round_one_points}
+
+OTHER LENSES (round 1):
+{others_block}
+
+Revise your read via submit_revised_lens.
+"""
+
+
+def run_technical_revision(
+    packet: ResearchPacket,
+    *,
+    round_one_lens: LensView,
+    others: list[LensView],
+    client=None,
+) -> AgentResult:
+    user_prompt = REVISION_USER_TEMPLATE.format(
+        round_one_direction=round_one_lens.direction,
+        round_one_conviction=round_one_lens.conviction,
+        round_one_summary=round_one_lens.summary,
+        round_one_points="\n".join(f"- {p}" for p in round_one_lens.points),
+        others_block=_format_other_lenses(others),
+    )
+    return run_revision(
+        agent_name="quantitative",
+        system_prompt=REVISION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        round_one_lens=round_one_lens,
+        client=client,
+    )
+
+
+__all__ = ["run_technical", "run_technical_revision"]

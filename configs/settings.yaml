@@ -57,3 +57,11 @@ walkforward:
   default_rebalance: weekly                # daily | weekly | on_signal
   cost_bps_grid: [5, 10, 25, 50]           # stress-test set; 10 is the headline
   benchmark_ticker: SPY
+
+# Entry/exit research feature (Quick + Deep modes).
+research:
+  deep:
+    # Phase 2: round-2 cross-lens debate after the 4 analysts post round-1.
+    # Default off so existing Deep runs behave identically. Flip to true
+    # to enable revisions (cost +~$0.02/run, +~10s).
+    cross_lens_round: false

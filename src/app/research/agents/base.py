@@ -222,12 +222,163 @@ def _extract_tool_input(response: Any, *, tool_name: str) -> dict[str, Any] | No
     return None
 
 
+def _format_other_lenses(others: list[LensView]) -> str:
+    """Format the other lenses' round-1 reads for inclusion in a revision prompt.
+
+    Used by every analyst's revision call. Excludes the receiving analyst's
+    own round-1 read (caller filters before passing in).
+    """
+    if not others:
+        return "(no other lens reads available)"
+    parts: list[str] = []
+    for lv in others:
+        parts.append(
+            f"- [{lv.name}] direction={lv.direction} · conviction={lv.conviction}"
+        )
+        parts.append(f"    summary: {lv.summary}")
+        for p in lv.points:
+            parts.append(f"    · {p}")
+    return "\n".join(parts)
+
+
+REVISION_TOOL_NAME = "submit_revised_lens"
+
+
+def _revision_tool_input_schema() -> dict[str, Any]:
+    """JSON schema for a revision call's `submit_revised_lens` tool.
+
+    Mirrors `_lens_tool_input_schema` plus a `revised_summary` separate
+    from the round-1 summary and a required `responded_to` list.
+    """
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "direction",
+            "conviction",
+            "revised_summary",
+            "revised_points",
+            "responded_to",
+        ],
+        "properties": {
+            "direction": {"type": "string", "enum": ["bullish", "bearish", "neutral"]},
+            "conviction": {"type": "string", "enum": list(CONFIDENCE)},
+            "revised_summary": {"type": "string"},
+            "revised_points": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 4,
+            },
+            "responded_to": {
+                "type": "array",
+                "items": {"type": "string", "enum": list(LENS_NAMES)},
+                "minItems": 0,
+                "maxItems": 3,
+            },
+        },
+    }
+
+
+def run_revision(
+    *,
+    agent_name: str,
+    system_prompt: str,
+    user_prompt: str,
+    round_one_lens: LensView,
+    client: Anthropic | None = None,
+    model: str = "claude-haiku-4-5-20251001",
+    max_tokens: int = 1500,
+) -> AgentResult:
+    """Run one analyst's revision call.
+
+    On success, returns an `AgentResult` whose `lens` is the round-1 lens
+    enriched with `revised_summary`, `revised_points`, `responded_to` (and
+    potentially updated `direction` / `conviction` if the analyst changed
+    their mind). On failure, returns the round-1 lens verbatim — orchestrator
+    fallback is a no-op.
+    """
+    if client is None:
+        env = load_env()
+        if not env.anthropic_api_key:
+            return AgentResult(
+                agent_name=agent_name,
+                lens=round_one_lens,
+                cost_usd=0.0,
+                duration_ms=0,
+                error="ANTHROPIC_API_KEY not set",
+            )
+        client = Anthropic(api_key=env.anthropic_api_key)
+
+    started = time.monotonic()
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=0,
+            system=system_prompt,
+            tools=[
+                {
+                    "name": REVISION_TOOL_NAME,
+                    "description": (
+                        "Submit a revised lens read after seeing the other "
+                        "lenses' round-1 reads."
+                    ),
+                    "input_schema": _revision_tool_input_schema(),
+                }
+            ],
+            tool_choice={"type": "tool", "name": REVISION_TOOL_NAME},
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        duration_ms = int((time.monotonic() - started) * 1000)
+        cost = _compute_cost(response, price_in=HAIKU_PRICE_IN, price_out=HAIKU_PRICE_OUT)
+        raw = _extract_tool_input(response, tool_name=REVISION_TOOL_NAME)
+        if raw is None:
+            return AgentResult(
+                agent_name=agent_name,
+                lens=round_one_lens,
+                cost_usd=cost,
+                duration_ms=duration_ms,
+                error=f"no {REVISION_TOOL_NAME} block in response",
+            )
+
+        revised_lens = round_one_lens.model_copy(
+            update={
+                "direction": raw.get("direction", round_one_lens.direction),
+                "conviction": raw.get("conviction", round_one_lens.conviction),
+                "revised_summary": raw.get("revised_summary"),
+                "revised_points": list(raw.get("revised_points", [])),
+                "responded_to": list(raw.get("responded_to", [])),
+            }
+        )
+        return AgentResult(
+            agent_name=agent_name,
+            lens=revised_lens,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+            raw=raw,
+        )
+    except Exception as e:
+        log.warning("research.deep.revision_failed", agent=agent_name, error=str(e))
+        return AgentResult(
+            agent_name=agent_name,
+            lens=round_one_lens,
+            cost_usd=0.0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error=str(e),
+        )
+
+
 __all__ = [
     "AgentResult",
     "HAIKU_PRICE_IN",
     "HAIKU_PRICE_OUT",
+    "REVISION_TOOL_NAME",
     "SONNET_PRICE_IN",
     "SONNET_PRICE_OUT",
+    "_format_other_lenses",
+    "_revision_tool_input_schema",
     "run_agent",
     "run_agents_parallel",
+    "run_revision",
 ]

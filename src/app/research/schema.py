@@ -93,6 +93,12 @@ class LensView(BaseModel):
     summary: str = ""  # one-line headline read
     points: list[str] = Field(default_factory=list)  # 2-4 supporting bullets
     direction: str = "neutral"  # "bullish" | "bearish" | "neutral" — vote on the trade
+    # Cross-lens debate (Phase 2). Populated only when round 2 ran AND
+    # the analyst chose to revise. Absence means "round 2 didn't apply
+    # or analyst declined to revise"; original summary / points stand.
+    revised_summary: str | None = None
+    revised_points: list[str] = Field(default_factory=list)
+    responded_to: list[str] = Field(default_factory=list)  # lens names this analyst engaged with
 
 
 @dataclass

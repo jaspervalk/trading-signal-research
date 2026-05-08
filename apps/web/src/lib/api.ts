@@ -642,6 +642,9 @@ export type LensView = {
   conviction: "low" | "medium" | "high";
   summary: string;
   points: string[];
+  revised_summary?: string | null;
+  revised_points?: string[];
+  responded_to?: string[];
 };
 
 export type RRCombo = {

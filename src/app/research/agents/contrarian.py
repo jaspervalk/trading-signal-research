@@ -19,8 +19,14 @@ this one's job is to make sure no obvious bear case gets glossed over.
 
 from __future__ import annotations
 
-from app.research.agents.base import AgentResult, run_agent
+from app.research.agents.base import (
+    AgentResult,
+    _format_other_lenses,
+    run_agent,
+    run_revision,
+)
 from app.research.context import ResearchPacket
+from app.research.schema import LensView
 
 SYSTEM_PROMPT = """\
 You are the Contrarian / Risk analyst on a four-lens swing-trading research \
@@ -138,4 +144,56 @@ def _fmt_pct(value) -> str:
     return f"{value * 100:+.2f}%"
 
 
-__all__ = ["run_contrarian"]
+REVISION_SYSTEM_PROMPT = """\
+You are the Contrarian-Risk analyst on a four-lens swing-trading panel. \
+You already submitted a round-1 adversarial read. Now you see the OTHER \
+THREE analysts' round-1 reads. Your job is to STAY adversarial:
+- Even if all three lenses are bullish, your job is to find what could go \
+  wrong.
+- If you genuinely cannot find a bear case after seeing them, say so \
+  explicitly with `direction='neutral'` and a `revised_summary` like 'no \
+  bear case identified after debate' — do NOT capitulate to bullish.
+- Engage with specific bullish claims via `responded_to` and counter them.
+- Submit via submit_revised_lens.
+"""
+
+
+REVISION_USER_TEMPLATE = """\
+Your round-1 read:
+- direction: {round_one_direction}
+- conviction: {round_one_conviction}
+- summary: {round_one_summary}
+- points:
+{round_one_points}
+
+OTHER LENSES (round 1):
+{others_block}
+
+Revise your read via submit_revised_lens.
+"""
+
+
+def run_contrarian_revision(
+    packet: ResearchPacket,
+    *,
+    round_one_lens: LensView,
+    others: list[LensView],
+    client=None,
+) -> AgentResult:
+    user_prompt = REVISION_USER_TEMPLATE.format(
+        round_one_direction=round_one_lens.direction,
+        round_one_conviction=round_one_lens.conviction,
+        round_one_summary=round_one_lens.summary,
+        round_one_points="\n".join(f"- {p}" for p in round_one_lens.points),
+        others_block=_format_other_lenses(others),
+    )
+    return run_revision(
+        agent_name="contrarian_risk",
+        system_prompt=REVISION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        round_one_lens=round_one_lens,
+        client=client,
+    )
+
+
+__all__ = ["run_contrarian", "run_contrarian_revision"]
