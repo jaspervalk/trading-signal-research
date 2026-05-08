@@ -57,6 +57,18 @@ class WalkForwardSettings(BaseModel):
     benchmark_ticker: str = "SPY"
 
 
+class DeepResearchSettings(BaseModel):
+    """Deep-mode (multi-agent) entry/exit research tunables."""
+
+    cross_lens_round: bool = False  # Phase 2: round-2 debate; cost +~$0.02/run
+
+
+class ResearchSettings(BaseModel):
+    """Entry/exit research feature settings."""
+
+    deep: DeepResearchSettings = DeepResearchSettings()
+
+
 class ProjectSettings(BaseModel):
     transcript: TranscriptSettings = TranscriptSettings()
     backtest: BacktestSettings = BacktestSettings()
@@ -64,6 +76,7 @@ class ProjectSettings(BaseModel):
     universe: UniverseSettings = UniverseSettings()
     scoring: ScoringSettings = ScoringSettings()
     walkforward: WalkForwardSettings = WalkForwardSettings()
+    research: ResearchSettings = ResearchSettings()
 
 
 class Env(BaseSettings):
