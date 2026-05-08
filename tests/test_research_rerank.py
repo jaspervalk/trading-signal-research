@@ -185,3 +185,38 @@ def test_run_rerank_both_analysts_fail(monkeypatch):
     assert result.error is not None
     assert "both analysts failed" in result.error.lower()
     assert judge_called == []  # judge NOT invoked when both fail
+
+
+from app.research.scan_rerank import rerank_tickers  # noqa: E402
+
+
+def test_rerank_tickers_parallel(monkeypatch):
+    """Fan out N tickers across a small ThreadPoolExecutor; collect results in
+    submission order (not arrival order) for deterministic display."""
+    from app.research import scan_rerank as scan_rerank_mod
+
+    def fake_build_packet(ticker, **kwargs):
+        # _stub_packet always builds AAPL — patch in the requested ticker so
+        # the orchestrator sees the right symbol per call.
+        p = _stub_packet()
+        p.ticker = ticker
+        return p
+
+    def fake_run_rerank(packet, client=None):
+        return ScanRerankResult(
+            ticker=packet.ticker,
+            as_of=packet.as_of,
+            rank="medium",
+            rationale=f"stub for {packet.ticker}",
+            lenses=[],
+            cost_usd=0.01,
+            duration_ms=100,
+        )
+
+    monkeypatch.setattr(scan_rerank_mod, "build_research_packet", fake_build_packet)
+    monkeypatch.setattr(scan_rerank_mod, "run_rerank", fake_run_rerank)
+
+    results = rerank_tickers(["AAPL", "NVDA", "TSLA"])
+    tickers = [r.ticker for r in results]
+    assert tickers == ["AAPL", "NVDA", "TSLA"]  # preserves submission order
+    assert all(r.rank == "medium" for r in results)
