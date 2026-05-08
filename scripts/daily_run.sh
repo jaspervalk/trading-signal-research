@@ -80,6 +80,12 @@ fi
 stage "extract"  "$TSR" extract "${extract_args[@]}" || failed=1
 
 stage "backtest" "$TSR" backtest || failed=1
+
+# Compute realized lens outcomes for snapshots whose horizons elapsed.
+# Best-effort — failure should not block the rest of the pipeline.
+stage "score-lens-outcomes" "$TSR" score-lens-outcomes --max-age-days 60 || \
+    echo "[$(ts)] warn: lens outcome scoring failed; continuing" >> "$LOG_FILE"
+
 stage "score"    "$TSR" score || failed=1
 
 echo "===== $(ts) daily_run.sh done (failed=$failed) =====" >> "$LOG_FILE"

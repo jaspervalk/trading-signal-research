@@ -93,6 +93,65 @@ def score() -> None:
     log.info("cli.score.done", **summary)
 
 
+@app.command(name="score-lens-outcomes")
+def score_lens_outcomes_cmd(
+    max_age_days: int = typer.Option(
+        60, help="Snapshots older than this are skipped."
+    ),
+) -> None:
+    """Compute realised outcomes for accumulated lens snapshots.
+
+    For each LensSnapshot whose `as_of + horizon` has elapsed, materialise
+    a LensOutcome row at 1d/3d/5d/21d horizons. Idempotent — already-scored
+    (snapshot, horizon) pairs are skipped. Run nightly via cron.
+    """
+    from app.db import session_scope
+    from app.scoring.lens_market_adapter import CachedMarketAdapter
+    from app.scoring.lens_outcomes import compute_lens_outcomes
+
+    adapter = CachedMarketAdapter()
+    with session_scope() as session:
+        n = compute_lens_outcomes(
+            session, market=adapter, max_age_days=max_age_days
+        )
+    typer.echo(f"Computed {n} new lens outcomes.")
+
+
+@app.command(name="lens-scorecards")
+def lens_scorecards_cmd(
+    lookback_days: int = typer.Option(90, help="Lookback window in days."),
+    horizon: str = typer.Option("5d", help="One of 1d, 3d, 5d, 21d."),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON instead of table."),
+) -> None:
+    """Print per-lens accuracy scorecards (Wilson CI + regime/conviction splits)."""
+    import json as _json
+
+    from app.db import session_scope
+    from app.scoring.lens_scorecards import compute_lens_scorecards
+
+    with session_scope() as session:
+        cards = compute_lens_scorecards(
+            session, lookback_days=lookback_days, horizon=horizon
+        )
+
+    if json_out:
+        typer.echo(_json.dumps([card.__dict__ for card in cards], default=str, indent=2))
+        return
+
+    if not cards:
+        typer.echo("(no lens scorecards — accumulate Deep runs first)")
+        return
+
+    for c in cards:
+        typer.echo(f"{c.lens_name} ({c.horizon}, n={c.n})")
+        typer.echo(
+            f"  hit_rate: {c.hit_rate:.2%}  [{c.hit_rate_lo:.2%}, {c.hit_rate_hi:.2%}]"
+        )
+        typer.echo(f"  avg_excess_vs_spy: {c.avg_excess_vs_spy:+.2%}")
+        if c.by_regime:
+            typer.echo(f"  by_regime: {c.by_regime}")
+
+
 @app.command(name="aggregate-signals")
 def aggregate_signals() -> None:
     """Recompute TickerSignal rows from accepted ExtractedCalls + Claims.

@@ -262,6 +262,31 @@ def run(
         cost_usd=cost,
         duration_ms=duration_ms,
     )
+
+    # Persist lens snapshots for later accuracy scoring (Phase 1).
+    # Quick is one Haiku call returning all 4 lenses; cost-per-lens is the
+    # total Quick cost / number of lenses (approximate but fine for aggregate
+    # scorecards). Skipped if the LLM didn't emit the lens block.
+    from app.db import session_scope
+    from app.research.lens_recording import record_lens_snapshots
+
+    if plan.lenses:
+        try:
+            with session_scope() as recording_session:
+                record_lens_snapshots(
+                    recording_session,
+                    plan_id=None,
+                    ticker=packet.ticker,
+                    as_of=packet.as_of,
+                    mode="quick",
+                    lenses=plan.lenses,
+                    sources_used=packet.sources_used,
+                    durations_ms=[duration_ms] * len(plan.lenses),
+                    costs_usd=[round(cost / max(len(plan.lenses), 1), 6)] * len(plan.lenses),
+                )
+        except Exception as e:
+            log.warning("research.quick.lens_recording_failed", error=str(e))
+
     raw_dict = response.model_dump() if hasattr(response, "model_dump") else dict(response)
     return QuickResult(plan=plan, raw_response=raw_dict)
 

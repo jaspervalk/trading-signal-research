@@ -347,3 +347,31 @@ curl -X POST 'http://localhost:8000/research/deep/AAPL?force=true' | jq '.plan_r
 ```
 
 352 → 360 tests across the branch.
+
+## 13. Lens accuracy infrastructure (Phase 1 of agent roadmap)
+
+Phase 1 of [docs/superpowers/plans/2026-05-08-lens-agents-roadmap.md](superpowers/plans/2026-05-08-lens-agents-roadmap.md).
+Recording infrastructure for per-lens accuracy scoring — silent now,
+unblocks Phase 6 (lens-weighted judge synthesis) once data accumulates.
+
+**What landed:**
+
+| Component | File |
+|---|---|
+| ORM tables `LensSnapshot` + `LensOutcome` | [src/app/models.py](../src/app/models.py) |
+| Alembic migration | [alembic/versions/](../alembic/versions/) |
+| Recording helper (idempotent on run-key) | [src/app/research/lens_recording.py](../src/app/research/lens_recording.py) |
+| Wired into Deep + Quick runtimes | [src/app/research/deep.py](../src/app/research/deep.py), [src/app/research/quick.py](../src/app/research/quick.py) |
+| Outcome computation @ 1d/3d/5d/21d horizons | [src/app/scoring/lens_outcomes.py](../src/app/scoring/lens_outcomes.py) |
+| `LensScorecard` analytics (Wilson CI, regime split) | [src/app/scoring/lens_scorecards.py](../src/app/scoring/lens_scorecards.py) |
+| CLI: `tsr score-lens-outcomes`, `tsr lens-scorecards` | [src/app/cli.py](../src/app/cli.py) |
+| API: `GET /research/lens-scorecards` | [apps/api/app/routes/research.py](../apps/api/app/routes/research.py) |
+| Cron wiring | [scripts/daily_run.sh](../scripts/daily_run.sh) |
+| Backfill (one-shot, optional) | [scripts/backfill_lens_snapshots.py](../scripts/backfill_lens_snapshots.py) — replayed 32 lens snapshots from 8 historical Deep/Quick plans |
+
+**Behavioral note:** Phase 1 is recording-only. Runtime Deep/Quick decisions
+are unchanged — the judge does not yet see the scorecards. That's Phase 6.
+
+**Next:** Phase 2 (cross-lens debate round) and Phase 3 (watchlist scan
+reranking) are the two cheapest follow-ups; both are independent of Phase 1
+data accumulation.

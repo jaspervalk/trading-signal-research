@@ -20,6 +20,7 @@ from app.research import context as plan_context
 from app.research import deep as plan_deep
 from app.research import quick as plan_quick
 from app.research.schema import EntryExitPlan
+from app.scoring.lens_scorecards import compute_lens_scorecards
 from apps.api.app.deps import db_session
 
 router = APIRouter(prefix="/research", tags=["research"])
@@ -246,3 +247,34 @@ def get_deep_research(
 ) -> EntryExitPlan | None:
     """Return today's cached deep-mode plan for `ticker`, or null."""
     return plan_cache.get_cached(session=session, ticker=ticker.upper(), mode="deep")
+
+
+@router.get("/lens-scorecards", response_model=list[dict])
+def get_lens_scorecards(
+    lookback_days: int = 90,
+    horizon: str = "5d",
+    session: Session = Depends(db_session),
+) -> list[dict]:
+    """Per-lens accuracy scorecards (Wilson CI, regime split, conviction split).
+
+    Empty list until enough Deep/Quick runs accumulate. Phase 6 of the
+    lens-agents roadmap injects these into the judge's prompt.
+    """
+    cards = compute_lens_scorecards(
+        session, lookback_days=lookback_days, horizon=horizon
+    )
+    return [
+        {
+            "lens_name": c.lens_name,
+            "horizon": c.horizon,
+            "n": c.n,
+            "hit_rate": c.hit_rate,
+            "hit_rate_lo": c.hit_rate_lo,
+            "hit_rate_hi": c.hit_rate_hi,
+            "avg_excess_vs_spy": c.avg_excess_vs_spy,
+            "by_regime": c.by_regime,
+            "by_conviction": c.by_conviction,
+            "by_direction": c.by_direction,
+        }
+        for c in cards
+    ]
