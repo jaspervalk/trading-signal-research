@@ -93,6 +93,30 @@ def score() -> None:
     log.info("cli.score.done", **summary)
 
 
+@app.command(name="score-lens-outcomes")
+def score_lens_outcomes_cmd(
+    max_age_days: int = typer.Option(
+        60, help="Snapshots older than this are skipped."
+    ),
+) -> None:
+    """Compute realised outcomes for accumulated lens snapshots.
+
+    For each LensSnapshot whose `as_of + horizon` has elapsed, materialise
+    a LensOutcome row at 1d/3d/5d/21d horizons. Idempotent — already-scored
+    (snapshot, horizon) pairs are skipped. Run nightly via cron.
+    """
+    from app.db import session_scope
+    from app.scoring.lens_market_adapter import CachedMarketAdapter
+    from app.scoring.lens_outcomes import compute_lens_outcomes
+
+    adapter = CachedMarketAdapter()
+    with session_scope() as session:
+        n = compute_lens_outcomes(
+            session, market=adapter, max_age_days=max_age_days
+        )
+    typer.echo(f"Computed {n} new lens outcomes.")
+
+
 @app.command(name="aggregate-signals")
 def aggregate_signals() -> None:
     """Recompute TickerSignal rows from accepted ExtractedCalls + Claims.
