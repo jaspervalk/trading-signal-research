@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,7 @@ from app.research import cache as plan_cache
 from app.research import context as plan_context
 from app.research import deep as plan_deep
 from app.research import quick as plan_quick
+from app.research.scan_rerank import rerank_tickers
 from app.research.schema import EntryExitPlan
 from app.scoring.lens_scorecards import compute_lens_scorecards
 from apps.api.app.deps import db_session
@@ -277,4 +279,68 @@ def get_lens_scorecards(
             "by_direction": c.by_direction,
         }
         for c in cards
+    ]
+
+
+class ScanRerankRequest(BaseModel):
+    """Body for POST /research/scan-rerank."""
+
+    tickers: list[str] | None = Field(
+        default=None,
+        description="Explicit tickers to rerank. Ignored when source='watchlist'.",
+    )
+    source: str = Field(
+        default="tickers",
+        description="'tickers' (use body.tickers) or 'watchlist' (pull from Watchlist).",
+    )
+
+
+@router.post("/scan-rerank", response_model=list[dict])
+def post_scan_rerank(
+    body: ScanRerankRequest,
+    session: Session = Depends(db_session),
+) -> list[dict]:
+    """Rerank a list of tickers via the reduced 2-lens panel + Sonnet judge.
+
+    Body: `{"tickers": ["AAPL", "NVDA"]}` or `{"source": "watchlist"}` to pull
+    from the user's pinned watchlist (entity_type='ticker').
+
+    Cost: ~$0.01-0.015 per ticker. No caching this phase — every call
+    spends. Use sparingly; user-driven, not cron-driven.
+    """
+    if body.source == "watchlist":
+        rows = list(
+            session.scalars(
+                select(Watchlist).where(Watchlist.entity_type == "ticker")
+            ).all()
+        )
+        ticker_list = [w.entity_id for w in rows]
+    else:
+        ticker_list = list(body.tickers or [])
+
+    if not ticker_list:
+        return []
+
+    results = rerank_tickers(ticker_list)
+    return [
+        {
+            "ticker": r.ticker,
+            "as_of": r.as_of.isoformat(),
+            "rank": r.rank,
+            "rationale": r.rationale,
+            "lenses": [
+                {
+                    "name": lv.name,
+                    "direction": lv.direction,
+                    "conviction": lv.conviction,
+                    "summary": lv.summary,
+                }
+                for lv in r.lenses
+            ],
+            "cost_usd": r.cost_usd,
+            "duration_ms": r.duration_ms,
+            "sources_used": r.sources_used,
+            "error": r.error,
+        }
+        for r in results
     ]
