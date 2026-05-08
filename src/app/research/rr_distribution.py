@@ -44,6 +44,11 @@ def compute_rr_distribution(
                     if risk <= 0:
                         continue
                     rr_p = risk_reward(entry, primary, inv)
+                    if rr_p <= 0:
+                        # Degenerate: primary exit is at or below entry — no
+                        # valid trade. Skip so it doesn't pollute the
+                        # distribution with rr_blended=0.0 and bias min/median.
+                        continue
                     rr_r = risk_reward(entry, runner, inv) if runner is not None else None
                     rr_b = blended_risk_reward(rr_primary=rr_p, rr_runner=rr_r)
                     if rr_b is None:

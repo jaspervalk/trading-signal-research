@@ -27,7 +27,7 @@ from app.analysis.schema import CONFIDENCE_LEVELS
 from app.config import load_env
 from app.logging import get_logger
 from app.research.context import ResearchPacket
-from app.research.rr_distribution import Picks, compute_rr_distribution, risk_reward
+from app.research.rr_distribution import compute_rr_distribution, risk_reward
 from app.research.schema import (
     AgentNote,
     CONFIDENCE,
@@ -35,6 +35,7 @@ from app.research.schema import (
     EntryExitPlan,
     LENS_NAMES,
     LensView,
+    Picks,
     TIMEFRAMES,
     ZoneBand,
     blended_risk_reward,

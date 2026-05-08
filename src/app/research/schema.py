@@ -1,7 +1,9 @@
 """Pydantic schemas for the entry/exit research feature.
 
 All numeric levels are anchored to deterministic candidates (`exits.py`,
-`entry.py`); the LLM may edit by ±15% with rationale, never invent.
+`entry.py`); the LLM picks among them by reference (`entry_kind` + integer
+indices into the candidate lists), and the system resolves picks verbatim.
+The LLM never invents a level and no longer scales them.
 """
 
 from __future__ import annotations
@@ -49,7 +51,8 @@ class ZoneBand(BaseModel):
 
 class CandidateLevels(BaseModel):
     """Deterministic level candidates fed into the LLM. The LLM picks among
-    them and may scale by ±15% with rationale; it cannot invent a level.
+    them by reference (`entry_kind` + integer indices); the system resolves
+    picks verbatim. The LLM cannot invent or scale a level.
 
     Populated by `research.context.gather()` from the existing analysis
     pipeline (entry.py + new exits.py).
@@ -176,14 +179,16 @@ class EntryExitPlan(BaseModel):
     """Structured entry/pullback/exit/stop plan for a single ticker.
 
     Returned by both `quick.run()` and `deep.run()`. Numeric fields are
-    LLM-edited deterministic candidates (±15% clamp); qualitative fields
-    are LLM-driven.
+    deterministic candidates resolved verbatim from the LLM's categorical
+    picks (`entry_kind` + integer indices); qualitative fields are
+    LLM-driven.
     """
 
     ticker: str
     as_of: datetime
 
-    # Numeric levels — clamped to ±15% of deterministic candidates.
+    # Numeric levels — resolved verbatim from the LLM's categorical picks
+    # against the deterministic candidates (no scaling, no clamping).
     entry_zone: ZoneBand
     pullback_entry_zone: ZoneBand | None = None
     exit_zone_primary: ZoneBand

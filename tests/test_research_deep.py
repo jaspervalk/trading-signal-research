@@ -95,7 +95,11 @@ def _stub_view() -> TickerResearchView:
         ),
         levels=LevelsPanel(
             nearest_support=270.0,
-            nearest_resistance=288.35,
+            # 298 > breakout entry high (290.86) so primary[0] forms a non-degenerate
+            # combo (reward > 0) for the breakout-entry tests. Pre-fix this was
+            # 288.35, silently producing an rr=0 combo that compute_rr_distribution
+            # now correctly skips.
+            nearest_resistance=298.0,
             recent_high_63d=287.51,
             base_low=245.51,
         ),

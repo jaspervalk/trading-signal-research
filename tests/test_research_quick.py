@@ -1,8 +1,9 @@
 """Quick-mode integration tests with a mocked Anthropic client.
 
 Tests the full flow: ResearchPacket → Claude tool-use → EntryExitPlan,
-without hitting the network. Also exercises the level-clamp and the
-confidence-bounding guards.
+without hitting the network. Also exercises the categorical-pick
+resolution (entry_kind + integer indices, with index clamping for
+out-of-range values) and the confidence-bounding guards.
 """
 
 from __future__ import annotations
@@ -83,7 +84,11 @@ def _stub_view(*, status_conf: str = "high") -> TickerResearchView:
         ),
         levels=LevelsPanel(
             nearest_support=95.0,
-            nearest_resistance=105.0,
+            # 115 > breakout entry high (109) so primary[0] forms a non-degenerate
+            # combo (reward > 0) for the breakout-entry tests below. Pre-fix the
+            # 105 value silently produced an rr=0 combo that compute_rr_distribution
+            # now correctly skips.
+            nearest_resistance=115.0,
             recent_high_63d=108.0,
             base_low=80.0,
         ),
