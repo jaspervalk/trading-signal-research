@@ -47,12 +47,23 @@ class ScoringSettings(BaseModel):
     min_n_for_scoring: int = 5
 
 
+class WalkForwardSettings(BaseModel):
+    """Walk-forward strategy backtest defaults (ADR 0007)."""
+
+    t2_cutoff: str = "2026-01-01T00:00:00+00:00"
+    min_n_trades: int = 30
+    default_rebalance: str = "weekly"  # 'daily' | 'weekly' | 'on_signal'
+    cost_bps_grid: list[int] = Field(default_factory=lambda: [5, 10, 25, 50])
+    benchmark_ticker: str = "SPY"
+
+
 class ProjectSettings(BaseModel):
     transcript: TranscriptSettings = TranscriptSettings()
     backtest: BacktestSettings = BacktestSettings()
     extraction: ExtractionSettings = ExtractionSettings()
     universe: UniverseSettings = UniverseSettings()
     scoring: ScoringSettings = ScoringSettings()
+    walkforward: WalkForwardSettings = WalkForwardSettings()
 
 
 class Env(BaseSettings):

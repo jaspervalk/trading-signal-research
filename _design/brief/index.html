@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AAPL — The Brief · Trading Signal Research</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+  :root {
+    --paper: #FAFAF7;
+    --ink: #1A1A1A;
+    --ink-soft: #2E2E2E;
+    --muted: #6B6B6B;
+    --muted-2: #8A8A86;
+    --rule: #E0DDD5;
+    --rule-2: #ECEAE3;
+    --accent: #1E3A5F;
+    --accent-soft: #4A6584;
+    --pos: #3F5F4A;
+    --neg: #7A3A3A;
+    --neutral: #6B6B6B;
+  }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-size: 16.5px;
+    line-height: 1.65;
+    letter-spacing: 0.005em;
+  }
+
+  .serif { font-family: 'Newsreader', Georgia, serif; font-weight: 400; }
+  .serif-italic { font-family: 'Newsreader', Georgia, serif; font-style: italic; font-weight: 400; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .sans { font-family: 'Inter', system-ui, sans-serif; }
+
+  .smallcaps {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+  }
+  .smallcaps-tight {
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    color: var(--muted);
+  }
+  .fineprint {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  .rule { border-top: 1px solid var(--rule); }
+  .rule-soft { border-top: 1px solid var(--rule-2); }
+
+  a.accent, .accent-link {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(30, 58, 95, 0.25);
+    padding-bottom: 1px;
+    transition: border-color 120ms ease;
+  }
+  a.accent:hover, .accent-link:hover { border-bottom-color: var(--accent); }
+
+  /* Reading column */
+  .col {
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+  .col-wide {
+    max-width: 1080px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+
+  .section-gap { margin-top: 96px; }
+  .section-gap-tight { margin-top: 72px; }
+
+  .ticker-display {
+    font-family: 'Newsreader', serif;
+    font-weight: 400;
+    font-style: italic;
+    font-size: 56px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+  .section-head {
+    font-family: 'Newsreader', serif;
+    font-weight: 400;
+    font-size: 24px;
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  /* Pull quote */
+  .pullquote {
+    font-family: 'Newsreader', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 23px;
+    line-height: 1.45;
+    color: var(--ink);
+    padding-left: 48px;
+    border-left: 1px solid var(--rule);
+    letter-spacing: -0.005em;
+  }
+  .pullquote .openq, .pullquote .closeq {
+    color: var(--muted-2);
+    font-style: normal;
+    font-family: 'Newsreader', serif;
+    font-size: 26px;
+    line-height: 0;
+    position: relative;
+    top: 2px;
+  }
+
+  /* Watchlist star */
+  .star-btn {
+    color: var(--accent);
+    border: 1px solid rgba(30, 58, 95, 0.25);
+    border-radius: 1px;
+    padding: 6px 10px;
+    font-size: 13px;
+    background: transparent;
+    transition: background 120ms ease;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: 0.04em;
+  }
+  .star-btn:hover { background: rgba(30, 58, 95, 0.04); }
+
+  /* Polarity glyph */
+  .glyph-up { color: var(--ink-soft); }
+  .glyph-down { color: var(--ink-soft); }
+  .glyph-flat { color: var(--muted); }
+
+  /* Calls table */
+  table.editorial {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+  table.editorial th {
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    color: var(--muted);
+    text-align: left;
+    padding: 10px 12px 10px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  table.editorial td {
+    padding: 14px 12px 14px 0;
+    border-bottom: 1px solid var(--rule-2);
+    vertical-align: top;
+  }
+  table.editorial td.num { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  table.editorial td.date { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted); }
+  table.editorial tr:last-child td { border-bottom: none; }
+
+  /* Coverage list */
+  .cov-row { padding: 18px 0; border-bottom: 1px solid var(--rule-2); display: flex; align-items: baseline; justify-content: space-between; gap: 24px; }
+  .cov-row:last-child { border-bottom: none; }
+
+  /* Notes textarea */
+  textarea.notepaper {
+    width: 100%;
+    min-height: 140px;
+    background:
+      linear-gradient(transparent 0, transparent calc(1.65em - 1px), var(--rule-2) calc(1.65em - 1px), var(--rule-2) 1.65em, transparent 1.65em);
+    background-size: 100% 1.65em;
+    background-attachment: local;
+    border: 1px solid var(--rule);
+    padding: 12px 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink);
+    resize: vertical;
+    outline: none;
+  }
+  textarea.notepaper:focus { border-color: var(--accent-soft); }
+
+  .chip {
+    display: inline-block;
+    border: 1px solid var(--rule);
+    border-radius: 1px;
+    padding: 3px 10px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-right: 6px;
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+  }
+  .chip.add {
+    color: var(--accent);
+    border-color: rgba(30, 58, 95, 0.25);
+    border-style: dashed;
+  }
+
+  /* Inactive low-N banner example */
+  .banner-example {
+    background: #F0EEE8;
+    border: 1px solid var(--rule);
+    color: var(--muted);
+    padding: 14px 18px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Badge slot (for Historical-only when applicable) */
+  .badge-slot {
+    display: inline-block;
+    min-width: 0;
+  }
+
+  /* Junior-designer notes aside */
+  #design-notes {
+    border: 1px dashed #B8B5AC;
+    color: #6B6B6B;
+    background: #F4F2EC;
+    font-size: 12.5px;
+    line-height: 1.55;
+    padding: 14px 18px;
+    margin: 24px auto 0 auto;
+    max-width: 720px;
+    border-radius: 1px;
+    font-family: 'Inter', sans-serif;
+  }
+  #design-notes h4 {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #6B6B6B;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  #design-notes ul { margin: 4px 0 8px 14px; list-style: disc; }
+  #design-notes li { margin-bottom: 2px; }
+  #design-notes em { color: #4F4F4F; }
+
+  /* Signal strip (typographic, not card-like) */
+  .signal-row { padding: 20px 0; border-top: 1px solid var(--rule-2); }
+  .signal-row:last-child { border-bottom: 1px solid var(--rule-2); }
+  .signal-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .signal-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .signal-num.muted { color: var(--muted); }
+
+  /* Chart area */
+  .chart-wrap {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 1080px;
+    padding: 0 28px;
+  }
+
+  /* SVG markers legend */
+  .legend-dot {
+    display: inline-block;
+    width: 9px; height: 9px; border-radius: 50%;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  /* Right-rail metric column for coverage */
+  .cov-metrics {
+    display: flex;
+    gap: 18px;
+    align-items: baseline;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .cov-metrics .mono { color: var(--ink); font-size: 13.5px; }
+
+  .pending { color: var(--muted); font-style: italic; }
+
+  /* Header layout */
+  .header-bar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 32px;
+  }
+  .price-cluster {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  /* Make horizontal hairlines feel airy */
+  hr.hair {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 0;
+  }
+
+  /* Source link */
+  .src-link {
+    color: var(--accent);
+    border-bottom: 1px solid rgba(30, 58, 95, 0.25);
+    padding-bottom: 1px;
+    text-decoration: none;
+  }
+  .src-link:hover { border-bottom-color: var(--accent); }
+
+  /* Selection */
+  ::selection { background: rgba(30, 58, 95, 0.14); }
+
+  /* Avoid Tailwind preflight removing native list/heading styles where we want them */
+  #design-notes ul li { list-style: disc outside; }
+
+  @media (max-width: 760px) {
+    .ticker-display { font-size: 44px; }
+    .pullquote { padding-left: 24px; font-size: 20px; }
+    .header-bar { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .price-cluster { align-items: flex-start; }
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ==================== JUNIOR DESIGNER NOTES ==================== -->
+<aside id="design-notes" aria-label="Designer pass notes">
+  <h4>Designer pass — notes for review</h4>
+  <p><strong>Direction:</strong> "The Brief" — editorial, single-column reading flow. The page is a research note, not a dashboard.</p>
+  <p><strong>Assumptions made:</strong></p>
+  <ul>
+    <li>Polarity is communicated via small typographic glyphs (▲ ▼ ◆) + sign in mono, never via colored fills — this preserves the calm palette and avoids reading as advice.</li>
+    <li>The chart is rendered as a static SVG silhouette; in production this would be lightweight-charts. A 365d daily-candle implementation would respect the same hairline grid + muted markers.</li>
+    <li>The "Historical only" badge slot is reserved in the header but not rendered (mock data is recent). The slot is sized so its later appearance doesn't reflow surrounding type.</li>
+  </ul>
+  <p><strong>Decisions &amp; reasoning:</strong></p>
+  <ul>
+    <li><em>Light mode against a dark dashboard</em> — the ticker page is the deliberate "reading room." Switching modes signals "you're here to slow down and read evidence," not to skim KPIs. The inverse-mode contrast also makes the page memorable as the research surface.</li>
+    <li><em>Claims as italic pull quotes, not table rows</em> — the verbatim quote IS the artefact. Centering 22-23px Newsreader italic forces the eye to read it; metadata demotes to fineprint above and below.</li>
+    <li><em>Wilson CIs in prose, not parentheses-only</em> — "Hit rate 42% (95% CI lower bound)" reads as a sentence; reviewers complained that bare "0.42" looked like a composite score.</li>
+  </ul>
+  <p><strong>Tradeoffs flagged:</strong></p>
+  <ul>
+    <li>Single-column reading flow means the signal strip can't be glanced at the same time as the chart — intentional but worth user-testing against scanners who expect a dashboard.</li>
+    <li>"Listen at 3:14 →" assumes click-through to the source. We need to confirm the audio/timestamp deeplink contract with the YouTube adapter (segment-level seek).</li>
+    <li>Polarity glyphs (▲ ▼ ◆) without color may underweight directional signal for fast scanning — open to introducing a single-color tint (one slate value) on direction-only glyphs in v2.</li>
+  </ul>
+  <p><strong>Reference:</strong> Stripe Press product pages (Working in Public, High Growth Handbook) and Reuters Graphics long-form — both use serif display, single-column reading, and editorial restraint to make data pieces feel authored rather than dashboard'd.</p>
+</aside>
+
+<!-- ==================== 1. HEADER STRIP ==================== -->
+<header class="col" style="margin-top: 64px;">
+  <div class="smallcaps" style="margin-bottom: 22px;">Trading Signal Research · Ticker Brief</div>
+
+  <div class="header-bar">
+    <div>
+      <div style="display:flex; align-items:flex-end; gap:18px;">
+        <div class="ticker-display">AAPL</div>
+        <!-- badge slot reserved for "Historical only" — not rendered now -->
+        <span class="badge-slot" aria-hidden="true"></span>
+      </div>
+      <div class="fineprint" style="margin-top: 10px;">
+        Apple Inc. &nbsp;·&nbsp; Common stock &nbsp;·&nbsp; NASDAQ
+      </div>
+    </div>
+
+    <div class="price-cluster">
+      <div class="mono" style="font-size: 28px; line-height: 1; color: var(--ink);">$238.45</div>
+      <div class="mono" style="font-size: 14px; color: var(--ink-soft);">
+        <span style="color: var(--pos);">▲ +1.94</span>
+        &nbsp;·&nbsp; +0.82% today
+      </div>
+      <button class="star-btn" style="margin-top: 8px;" aria-label="Add to watchlist">
+        <span style="color: var(--accent); margin-right: 4px;">★</span> Watchlist
+      </button>
+    </div>
+  </div>
+
+  <div class="fineprint" style="margin-top: 28px;">
+    <a href="#methodology" class="accent">Decision support, not advice — see methodology</a>
+  </div>
+
+  <hr class="hair" style="margin-top: 44px;">
+</header>
+
+<!-- ==================== 2. LIVE-SIGNAL STRIP (typographic) ==================== -->
+<section class="col section-gap-tight" aria-labelledby="signals-h">
+  <div class="smallcaps" style="margin-bottom: 14px;">Live signals</div>
+  <h2 id="signals-h" class="section-head" style="margin-bottom: 6px;">Sentiment, weighted by creator credibility.</h2>
+  <p class="fineprint" style="margin-bottom: 36px;">
+    Two windows of community discussion — last seven days and last thirty.
+    Polarity ranges <span class="mono">−1</span> to <span class="mono">+1</span>; weighted polarity scales each mention by the source creator's calibrated credibility. No composite scores.
+  </p>
+
+  <!-- 7-day -->
+  <div class="signal-row">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">Seven-day window</div>
+    <div class="grid grid-cols-3 gap-6">
+      <!-- claims_all -->
+      <div class="signal-group">
+        <div class="smallcaps-tight">Claims · all</div>
+        <div class="signal-num">
+          <span class="glyph-up" style="margin-right: 6px;">▲</span>+0.50
+        </div>
+        <div class="fineprint">
+          weighted <span class="mono">+0.62</span><br>
+          <span class="mono">N = 4</span> mentions · 3 creators
+        </div>
+      </div>
+      <!-- claims_factual -->
+      <div class="signal-group">
+        <div class="smallcaps-tight">Claims · factual</div>
+        <div class="signal-num muted">
+          <span class="glyph-flat" style="margin-right: 6px;">◆</span>+0.00
+        </div>
+        <div class="fineprint">
+          weighted <span class="mono">+0.00</span><br>
+          <span class="mono">N = 2</span> mentions · 2 creators
+        </div>
+      </div>
+      <!-- creator_consensus -->
+      <div class="signal-group">
+        <div class="smallcaps-tight">Creator consensus</div>
+        <div class="signal-num">
+          <span class="glyph-up" style="margin-right: 6px;">▲</span>+0.50
+        </div>
+        <div class="fineprint">
+          weighted <span class="mono">+0.62</span><br>
+          <span class="mono">N = 4</span> mentions · 3 creators
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 30-day -->
+  <div class="signal-row">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">Thirty-day window</div>
+    <div class="grid grid-cols-3 gap-6">
+      <div class="signal-group">
+        <div class="smallcaps-tight">Claims · all</div>
+        <div class="signal-num">
+          <span class="glyph-up" style="margin-right: 6px;">▲</span>+0.36
+        </div>
+        <div class="fineprint">
+          weighted <span class="mono">+0.48</span><br>
+          <span class="mono">N = 11</span> mentions · 5 creators
+        </div>
+      </div>
+      <div class="signal-group">
+        <div class="smallcaps-tight">Claims · factual</div>
+        <div class="signal-num">
+          <span class="glyph-up" style="margin-right: 6px;">▲</span>+0.25
+        </div>
+        <div class="fineprint">
+          weighted <span class="mono">+0.30</span><br>
+          <span class="mono">N = 4</span> mentions · 3 creators
+        </div>
+      </div>
+      <div class="signal-group">
+        <div class="smallcaps-tight">Creator consensus</div>
+        <div class="signal-num">
+          <span class="glyph-up" style="margin-right: 6px;">▲</span>+0.36
+        </div>
+        <div class="fineprint">
+          weighted <span class="mono">+0.48</span><br>
+          <span class="mono">N = 11</span> mentions · 5 creators
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="fineprint" style="margin-top: 18px;">
+    Wilson 95% confidence intervals on directional polarity are reported per claim type in the methodology section below.
+    Sample-size threshold: <span class="mono">N ≥ 5</span> required for any window-level reading.
+  </p>
+</section>
+
+<!-- ==================== 3. PRICE CHART ==================== -->
+<section class="chart-wrap section-gap" aria-labelledby="chart-h">
+  <div class="col" style="padding-left: 0; padding-right: 0;">
+    <div class="smallcaps" style="margin-bottom: 14px;">Price history</div>
+    <h2 id="chart-h" class="section-head" style="margin-bottom: 8px;">Daily candles, last 365 days, with call markers.</h2>
+    <p class="fineprint" style="margin-bottom: 28px;">
+      Markers indicate the date a tracked creator posted a falsifiable trade call.
+      Marker fill encodes 5-day outcome; marker shape and position do not encode advice.
+    </p>
+  </div>
+
+  <!-- Static SVG chart approximation — 1080 x 320 viewBox -->
+  <svg viewBox="0 0 1080 320" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:auto; display:block;">
+    <!-- Plot frame -->
+    <g font-family="Inter, sans-serif" font-size="10.5" fill="#8A8A86" letter-spacing="0.05em">
+      <!-- y-axis labels -->
+      <text x="6" y="36">260</text>
+      <text x="6" y="100">250</text>
+      <text x="6" y="164">240</text>
+      <text x="6" y="228">230</text>
+      <text x="6" y="292">220</text>
+    </g>
+
+    <!-- Hairline horizontal grid -->
+    <g stroke="#ECEAE3" stroke-width="1">
+      <line x1="40" y1="32"  x2="1060" y2="32"/>
+      <line x1="40" y1="96"  x2="1060" y2="96"/>
+      <line x1="40" y1="160" x2="1060" y2="160"/>
+      <line x1="40" y1="224" x2="1060" y2="224"/>
+      <line x1="40" y1="288" x2="1060" y2="288"/>
+    </g>
+
+    <!-- vertical quarterly hairlines -->
+    <g stroke="#ECEAE3" stroke-width="1">
+      <line x1="295" y1="32"  x2="295"  y2="288"/>
+      <line x1="550" y1="32"  x2="550"  y2="288"/>
+      <line x1="805" y1="32"  x2="805"  y2="288"/>
+    </g>
+
+    <!-- Price area subtle fill -->
+    <defs>
+      <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1A1A1A" stop-opacity="0.06"/>
+        <stop offset="100%" stop-color="#1A1A1A" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="
+      M 40,260
+      L 80,256 L 120,250 L 160,258 L 200,244 L 240,236 L 280,242
+      L 320,228 L 360,220 L 400,232 L 440,214 L 480,200 L 520,210
+      L 560,196 L 600,184 L 640,192 L 680,176 L 720,162 L 760,170
+      L 800,156 L 840,144 L 880,154 L 920,134 L 960,122 L 1000,138
+      L 1040,118 L 1060,108
+      L 1060,288 L 40,288 Z
+    " fill="url(#areaG)"/>
+
+    <!-- Price line -->
+    <path d="
+      M 40,260
+      L 80,256 L 120,250 L 160,258 L 200,244 L 240,236 L 280,242
+      L 320,228 L 360,220 L 400,232 L 440,214 L 480,200 L 520,210
+      L 560,196 L 600,184 L 640,192 L 680,176 L 720,162 L 760,170
+      L 800,156 L 840,144 L 880,154 L 920,134 L 960,122 L 1000,138
+      L 1040,118 L 1060,108
+    " fill="none" stroke="#1A1A1A" stroke-width="1.25" stroke-linejoin="round"/>
+
+    <!-- Sparse candle wicks for "daily candle" feel — every ~14 days -->
+    <g stroke="#1A1A1A" stroke-width="0.9" opacity="0.55">
+      <line x1="80"  y1="248" x2="80"  y2="262"/>
+      <line x1="160" y1="252" x2="160" y2="264"/>
+      <line x1="240" y1="230" x2="240" y2="244"/>
+      <line x1="320" y1="222" x2="320" y2="234"/>
+      <line x1="400" y1="226" x2="400" y2="240"/>
+      <line x1="480" y1="194" x2="480" y2="208"/>
+      <line x1="560" y1="190" x2="560" y2="204"/>
+      <line x1="640" y1="186" x2="640" y2="200"/>
+      <line x1="720" y1="156" x2="720" y2="170"/>
+      <line x1="800" y1="150" x2="800" y2="164"/>
+      <line x1="880" y1="148" x2="880" y2="160"/>
+      <line x1="960" y1="116" x2="960" y2="130"/>
+      <line x1="1040" y1="112" x2="1040" y2="126"/>
+    </g>
+
+    <!-- Call markers (4) — muted fills -->
+    <!-- 2026-04-12 Bulls — long market, +1.8% (positive, slate-green) -->
+    <circle cx="930" cy="132" r="5" fill="#5C7A66" stroke="#1A1A1A" stroke-width="0.75"/>
+    <!-- 2026-04-20 TraderLion — short trigger, -1.1% (negative, muted rust) -->
+    <circle cx="970" cy="124" r="5" fill="#9E6E6E" stroke="#1A1A1A" stroke-width="0.75"/>
+    <!-- 2026-04-25 SMM — long limit, +3.2% (positive, slate-green stronger) -->
+    <circle cx="1000" cy="138" r="5" fill="#3F5F4A" stroke="#1A1A1A" stroke-width="0.75"/>
+    <!-- 2026-05-02 SMM — long limit, pending (hollow) -->
+    <circle cx="1050" cy="112" r="5" fill="#FAFAF7" stroke="#1A1A1A" stroke-width="1.1"/>
+
+    <!-- x-axis quarterly tick labels -->
+    <g font-family="Inter, sans-serif" font-size="10.5" fill="#8A8A86" letter-spacing="0.08em" text-anchor="middle">
+      <text x="40"   y="308">JUL '25</text>
+      <text x="295"  y="308">OCT '25</text>
+      <text x="550"  y="308">JAN '26</text>
+      <text x="805"  y="308">APR '26</text>
+    </g>
+  </svg>
+
+  <div class="col" style="padding-left: 0; padding-right: 0; margin-top: 18px;">
+    <div class="fineprint" style="display:flex; flex-wrap:wrap; gap:18px; align-items:center;">
+      <span><span class="legend-dot" style="background:#3F5F4A;"></span>Long, positive 5d outcome</span>
+      <span><span class="legend-dot" style="background:#9E6E6E;"></span>Short or long, negative 5d outcome</span>
+      <span><span class="legend-dot" style="background:#FAFAF7; border:1px solid #1A1A1A;"></span>Pending — outcome window open</span>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 4. RECENT CLAIMS FEED — pull-quote stream ==================== -->
+<section class="col section-gap" aria-labelledby="claims-h">
+  <div class="smallcaps" style="margin-bottom: 14px;">Recent claims</div>
+  <h2 id="claims-h" class="section-head" style="margin-bottom: 8px;">What creators have actually said about AAPL.</h2>
+  <p class="fineprint" style="margin-bottom: 56px;">
+    Each entry below is a verbatim quote pulled from a tracked YouTube transcript, paired with its source segment timestamp.
+    Quotes are unedited; classification (factual / opinion / conditional) is generated by the extractor and reviewed against the gold set.
+  </p>
+
+  <!-- Claim 1 -->
+  <article style="margin-bottom: 64px;">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">
+      April 30, 2026 &nbsp;·&nbsp; Stock Market Mentor &nbsp;·&nbsp; Thesis &nbsp;·&nbsp; Class: opinion
+    </div>
+    <blockquote class="pullquote">
+      <span class="openq">“</span>AAPL is setting up for a textbook cup-and-handle into May earnings, looks like a clean breakout above 240 with volume confirmation.<span class="closeq">”</span>
+    </blockquote>
+    <div class="smallcaps-tight" style="margin-top: 16px; padding-left: 48px;">
+      <span class="glyph-up">▲</span> <span class="mono" style="text-transform: none; letter-spacing: 0;">+1</span> polarity
+      &nbsp;·&nbsp; Summary: cup-and-handle setup into earnings
+      &nbsp;·&nbsp; <a class="src-link" href="#">Listen at 3:14 →</a>
+    </div>
+  </article>
+
+  <!-- Claim 2 -->
+  <article style="margin-bottom: 64px;">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">
+      April 28, 2026 &nbsp;·&nbsp; TraderLion &nbsp;·&nbsp; Risk &nbsp;·&nbsp; Class: conditional
+    </div>
+    <blockquote class="pullquote">
+      <span class="openq">“</span>If AAPL loses 230 with conviction we're looking at a multi-week downtrend, no question — that's the line in the sand.<span class="closeq">”</span>
+    </blockquote>
+    <div class="smallcaps-tight" style="margin-top: 16px; padding-left: 48px;">
+      <span class="glyph-down">▼</span> <span class="mono" style="text-transform: none; letter-spacing: 0;">−1</span> polarity
+      &nbsp;·&nbsp; Summary: 230 break implies downtrend
+      &nbsp;·&nbsp; <a class="src-link" href="#">Listen at 7:42 →</a>
+    </div>
+  </article>
+
+  <!-- Claim 3 -->
+  <article style="margin-bottom: 64px;">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">
+      April 22, 2026 &nbsp;·&nbsp; Bulls on Wall Street &nbsp;·&nbsp; Catalyst &nbsp;·&nbsp; Class: factual
+    </div>
+    <blockquote class="pullquote">
+      <span class="openq">“</span>iPhone 17 Pro pre-orders are the strongest we've seen in three years according to the supply chain checks.<span class="closeq">”</span>
+    </blockquote>
+    <div class="smallcaps-tight" style="margin-top: 16px; padding-left: 48px;">
+      <span class="glyph-up">▲</span> <span class="mono" style="text-transform: none; letter-spacing: 0;">+1</span> polarity
+      &nbsp;·&nbsp; Summary: iPhone 17 Pro pre-orders strong
+      &nbsp;·&nbsp; <a class="src-link" href="#">Listen at 12:08 →</a>
+    </div>
+  </article>
+
+  <!-- Claim 4 -->
+  <article style="margin-bottom: 64px;">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">
+      April 15, 2026 &nbsp;·&nbsp; Adam Mancini &nbsp;·&nbsp; Level &nbsp;·&nbsp; Class: factual
+    </div>
+    <blockquote class="pullquote">
+      <span class="openq">“</span>234.50 is the line bulls have to defend, simple as that.<span class="closeq">”</span>
+    </blockquote>
+    <div class="smallcaps-tight" style="margin-top: 16px; padding-left: 48px;">
+      <span class="glyph-flat">◆</span> <span class="mono" style="text-transform: none; letter-spacing: 0;">0</span> polarity
+      &nbsp;·&nbsp; Summary: key support at 234.50
+      &nbsp;·&nbsp; <a class="src-link" href="#">Listen at 2:30 →</a>
+    </div>
+  </article>
+
+  <!-- Claim 5 -->
+  <article style="margin-bottom: 16px;">
+    <div class="smallcaps-tight" style="margin-bottom: 14px;">
+      April 8, 2026 &nbsp;·&nbsp; Stock Market Mentor &nbsp;·&nbsp; Thesis &nbsp;·&nbsp; Class: opinion
+    </div>
+    <blockquote class="pullquote">
+      <span class="openq">“</span>I'd be a buyer in the 230 to 235 zone all day, that's where I'm placing limits.<span class="closeq">”</span>
+    </blockquote>
+    <div class="smallcaps-tight" style="margin-top: 16px; padding-left: 48px;">
+      <span class="glyph-up">▲</span> <span class="mono" style="text-transform: none; letter-spacing: 0;">+1</span> polarity
+      &nbsp;·&nbsp; Summary: buy-zone interest 230–235
+      &nbsp;·&nbsp; <a class="src-link" href="#">Listen at 5:55 →</a>
+    </div>
+  </article>
+</section>
+
+<!-- ==================== 5. TRADE CALLS TABLE ==================== -->
+<section class="col section-gap" aria-labelledby="calls-h">
+  <div class="smallcaps" style="margin-bottom: 14px;">Trade calls</div>
+  <h2 id="calls-h" class="section-head" style="margin-bottom: 8px;">Falsifiable, structured calls extracted from transcripts.</h2>
+  <p class="fineprint" style="margin-bottom: 28px;">
+    Calls are scored only when an activation rule fires (limit hit, trigger crossed, or market order at post).
+    5-day return is net of <span class="mono">10 bps</span> round-trip; pending entries have an open outcome window.
+  </p>
+
+  <table class="editorial">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Creator</th>
+        <th>Side</th>
+        <th>Entry</th>
+        <th style="text-align:right;">Conf.</th>
+        <th>Status</th>
+        <th style="text-align:right;">5d return</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="date">2026-05-02</td>
+        <td>Stock Market Mentor</td>
+        <td>Long</td>
+        <td>Limit @ <span class="mono">235.00</span></td>
+        <td class="num" style="text-align:right;">0.71</td>
+        <td>Accepted</td>
+        <td class="num pending" style="text-align:right;">— pending</td>
+      </tr>
+      <tr>
+        <td class="date">2026-04-25</td>
+        <td>Stock Market Mentor</td>
+        <td>Long</td>
+        <td>Limit @ <span class="mono">232.00</span></td>
+        <td class="num" style="text-align:right;">0.78</td>
+        <td>Accepted</td>
+        <td class="num" style="text-align:right; color: var(--pos);">+3.2%</td>
+      </tr>
+      <tr>
+        <td class="date">2026-04-20</td>
+        <td>TraderLion</td>
+        <td>Short</td>
+        <td>Trigger &lt; <span class="mono">228</span></td>
+        <td class="num" style="text-align:right;">0.65</td>
+        <td>Accepted</td>
+        <td class="num" style="text-align:right; color: var(--neg);">−1.1%</td>
+      </tr>
+      <tr>
+        <td class="date">2026-04-12</td>
+        <td>Bulls on Wall Street</td>
+        <td>Long</td>
+        <td>Market</td>
+        <td class="num" style="text-align:right;">0.82</td>
+        <td>Accepted</td>
+        <td class="num" style="text-align:right; color: var(--pos);">+1.8%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="fineprint" style="margin-top: 18px;">
+    Activation rules and leakage controls are documented in <a class="accent" href="#">ADR-0003 — Backtest assumptions</a>.
+  </p>
+</section>
+
+<!-- ==================== 6. CREATOR COVERAGE PANEL ==================== -->
+<section class="col section-gap" aria-labelledby="cov-h">
+  <div class="smallcaps" style="margin-bottom: 14px;">Creator coverage</div>
+  <h2 id="cov-h" class="section-head" style="margin-bottom: 8px;">Who has been talking about AAPL, and how reliable are they.</h2>
+  <p class="fineprint" style="margin-bottom: 28px;">
+    Creators sorted by calibrated credibility, then by mention count.
+    Hit-rate figures are reported as Wilson 95% lower bounds — a deliberately conservative read.
+    "Uncalibrated" indicates fewer than the threshold of activated calls required for a stable estimate.
+  </p>
+
+  <hr class="hair">
+
+  <!-- TraderLion -->
+  <div class="cov-row">
+    <div>
+      <div class="serif" style="font-size: 18px; color: var(--ink);">TraderLion</div>
+      <div class="fineprint" style="margin-top: 4px;">
+        Most recent mention <span class="mono">2026-04-28</span>
+        &nbsp;·&nbsp; <span class="mono">3</span> calls, <span class="mono">5</span> claims
+      </div>
+      <div class="fineprint" style="margin-top: 6px;">
+        Hit rate <span class="mono" style="color: var(--ink);">51%</span> (95% CI lower bound)
+        &nbsp;·&nbsp; Net polarity <span class="mono" style="color: var(--ink);">+0.20</span>
+      </div>
+    </div>
+    <div class="cov-metrics">
+      <span class="glyph-up">▲</span>
+    </div>
+  </div>
+
+  <!-- Stock Market Mentor -->
+  <div class="cov-row">
+    <div>
+      <div class="serif" style="font-size: 18px; color: var(--ink);">Stock Market Mentor</div>
+      <div class="fineprint" style="margin-top: 4px;">
+        Most recent mention <span class="mono">2026-04-30</span>
+        &nbsp;·&nbsp; <span class="mono">2</span> calls, <span class="mono">4</span> claims
+      </div>
+      <div class="fineprint" style="margin-top: 6px;">
+        Hit rate <span class="mono" style="color: var(--ink);">42%</span> (95% CI lower bound)
+        &nbsp;·&nbsp; Net polarity <span class="mono" style="color: var(--ink);">+0.40</span>
+      </div>
+    </div>
+    <div class="cov-metrics">
+      <span class="glyph-up">▲</span>
+    </div>
+  </div>
+
+  <!-- Bulls on Wall Street -->
+  <div class="cov-row">
+    <div>
+      <div class="serif" style="font-size: 18px; color: var(--ink);">Bulls on Wall Street</div>
+      <div class="fineprint" style="margin-top: 4px;">
+        Most recent mention <span class="mono">2026-04-22</span>
+        &nbsp;·&nbsp; <span class="mono">1</span> call, <span class="mono">2</span> claims
+      </div>
+      <div class="fineprint" style="margin-top: 6px;">
+        Hit rate <span class="mono" style="color: var(--ink);">38%</span> (95% CI lower bound)
+        &nbsp;·&nbsp; Net polarity <span class="mono" style="color: var(--ink);">+0.50</span>
+      </div>
+    </div>
+    <div class="cov-metrics">
+      <span class="glyph-up">▲</span>
+    </div>
+  </div>
+
+  <!-- Adam Mancini -->
+  <div class="cov-row">
+    <div>
+      <div class="serif" style="font-size: 18px; color: var(--ink);">Adam Mancini</div>
+      <div class="fineprint" style="margin-top: 4px;">
+        Most recent mention <span class="mono">2026-04-15</span>
+        &nbsp;·&nbsp; <span class="mono">0</span> calls, <span class="mono">1</span> claim
+      </div>
+      <div class="fineprint" style="margin-top: 6px;">
+        Hit rate <em style="color: var(--muted-2);">uncalibrated</em>
+        &nbsp;·&nbsp; Net polarity <span class="mono" style="color: var(--ink);">0.00</span>
+      </div>
+    </div>
+    <div class="cov-metrics">
+      <span class="glyph-flat">◆</span>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 7. NOTES & MANUAL REVIEW ==================== -->
+<section class="col section-gap" aria-labelledby="notes-h">
+  <div class="smallcaps" style="margin-bottom: 14px;">Notes &amp; manual review</div>
+  <h2 id="notes-h" class="section-head" style="margin-bottom: 8px;">Annotations, scratchpad, tags.</h2>
+  <p class="fineprint" style="margin-bottom: 22px;">
+    Private to your workspace. Not used by the extractor or signal aggregator.
+  </p>
+
+  <textarea class="notepaper" placeholder="Watching the 234.50 reclaim into earnings; want to see two consecutive closes above 240 before reading the cup-and-handle as confirmed. SMM's track record on AAPL setups is uneven — review last six months before weighting."></textarea>
+
+  <div style="margin-top: 18px;">
+    <span class="smallcaps-tight" style="margin-right: 12px;">Tags</span>
+    <span class="chip">earnings-watch</span>
+    <span class="chip">cup-and-handle</span>
+    <span class="chip">smm-thesis</span>
+    <span class="chip">230-line</span>
+    <span class="chip add">+ add tag</span>
+  </div>
+</section>
+
+<!-- ==================== 8. METHODOLOGY / DATA-STATE FOOTER ==================== -->
+<section class="col section-gap" id="methodology" aria-labelledby="meth-h">
+  <div class="smallcaps" style="margin-bottom: 14px;">Methodology &amp; data state</div>
+  <h2 id="meth-h" class="section-head" style="margin-bottom: 8px;">How this page was assembled.</h2>
+
+  <hr class="hair" style="margin: 28px 0;">
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
+    <div>
+      <div class="smallcaps-tight" style="margin-bottom: 8px;">Pipeline state</div>
+      <p class="fineprint">
+        Last extractor run &nbsp;·&nbsp; <span class="mono" style="color: var(--ink);">2026-05-04</span><br>
+        Last aggregate-signals recompute &nbsp;·&nbsp; <span class="mono" style="color: var(--ink);">2026-05-05 06:30 UTC</span><br>
+        Total mentions on this ticker &nbsp;·&nbsp; <span class="mono" style="color: var(--ink);">N = 15</span> (above the N≥5 threshold)
+      </p>
+    </div>
+
+    <div>
+      <div class="smallcaps-tight" style="margin-bottom: 8px;">Definitions</div>
+      <p class="fineprint">
+        <em>Polarity</em> — directional sentiment in <span class="mono">[−1, +1]</span> per mention.<br>
+        <em>Weighted polarity</em> — polarity scaled by creator credibility prior.<br>
+        <em>Wilson lower bound</em> — conservative 95% CI floor on hit rate.<br>
+        <em>Activation</em> — the call's entry condition was satisfied within ten trading days.
+      </p>
+    </div>
+
+    <div>
+      <div class="smallcaps-tight" style="margin-bottom: 8px;">Decisions of record</div>
+      <p class="fineprint">
+        <a class="accent" href="#">ADR-0005 — Product pivot to decision-support</a><br>
+        <a class="accent" href="#">ADR-0006 — Claims and ticker signals</a><br>
+        <a class="accent" href="#">ADR-0003 — Per-call backtest contract</a>
+      </p>
+    </div>
+
+    <div>
+      <div class="smallcaps-tight" style="margin-bottom: 8px;">Disclaimer</div>
+      <p class="fineprint">
+        This page is research and educational tooling. It is decision support, not investment advice.
+        Quotes are reproduced verbatim from public YouTube transcripts; all trade calls are extracted from creator commentary and are not recommendations.
+      </p>
+    </div>
+  </div>
+
+  <hr class="hair" style="margin: 44px 0 24px 0;">
+
+  <div class="smallcaps-tight" style="margin-bottom: 12px;">Low-N banner — inactive example</div>
+  <div class="banner-example">
+    <div class="smallcaps-tight" style="color: var(--muted); margin-bottom: 4px;">⚠ Sample size warning</div>
+    <span class="serif" style="font-size: 16px; color: var(--muted);">
+      Only <span class="mono">N = 3</span> mentions of this ticker in the active window — readings below are exploratory and should not be treated as a signal.
+    </span>
+  </div>
+  <p class="fineprint" style="margin-top: 10px; font-style: italic;">
+    Banner appearance when total mentions &lt; 5 (currently 15, so suppressed). Would render directly above the live-signal strip when triggered.
+  </p>
+</section>
+
+<!-- ==================== END FOOTER ==================== -->
+<footer class="col" style="margin-top: 96px; margin-bottom: 64px;">
+  <hr class="hair" style="margin-bottom: 24px;">
+  <div class="fineprint" style="display:flex; justify-content:space-between; align-items:baseline; gap: 16px; flex-wrap: wrap;">
+    <span>Trading Signal Research &nbsp;·&nbsp; Ticker Brief &nbsp;·&nbsp; <span class="mono">v0.1</span></span>
+    <span class="smallcaps-tight">Decision support — not advice</span>
+  </div>
+</footer>
+
+</body>
+</html>

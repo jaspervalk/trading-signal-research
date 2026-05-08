@@ -29,8 +29,10 @@ from app.models import (
     CLAIM_STATUS_ACCEPTED,
     CLAIM_STATUS_PENDING_REVIEW,
     Claim,
+    Creator,
     Document,
     ExtractedCall,
+    SourceChannel,
     TranscriptSegment,
 )
 from app.normalize.tickers import Universe, load_universe
@@ -46,10 +48,16 @@ def run_extraction(
     limit: int | None = None,
     min_segments: int = 1,
     use_two_pass: bool = True,
+    creator_filter: str | None = None,
 ) -> dict[str, int]:
     """Process pending Documents.
 
     Returns a summary: {extracted, no_call, rejected, errors, documents}.
+
+    `creator_filter`, when set, restricts to documents whose Creator's
+    display_name contains the filter (case-insensitive substring). Useful
+    for diversifying corpus coverage across creators instead of processing
+    most-recent-first across the whole pool.
     """
     settings = load_project_settings().extraction
     universe = universe or load_universe()
@@ -70,6 +78,7 @@ def run_extraction(
         extractor_version=settings.extractor_version,
         limit=limit,
         min_segments=min_segments,
+        creator_filter=creator_filter,
     )
     log.info("extract.run.start", n_docs=len(docs))
 
@@ -103,6 +112,7 @@ def _load_pending_documents(
     extractor_version: str,
     limit: int | None,
     min_segments: int = 1,
+    creator_filter: str | None = None,
 ) -> list[tuple[int, str | None]]:
     """Documents with at least `min_segments` segments and no prior extracts
     (call OR claim) at this extractor_version. Sorted most-recent-first.
@@ -128,6 +138,12 @@ def _load_pending_documents(
         )
         if document_ids is not None:
             q = q.where(Document.id.in_(document_ids))
+        if creator_filter is not None:
+            q = (
+                q.join(SourceChannel, SourceChannel.id == Document.source_channel_id)
+                 .join(Creator, Creator.id == SourceChannel.creator_id)
+                 .where(Creator.display_name.ilike(f"%{creator_filter}%"))
+            )
         q = q.order_by(Document.posted_at.desc())
         if limit:
             q = q.limit(limit)

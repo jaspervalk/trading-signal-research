@@ -249,6 +249,16 @@ class LLMExtractor:
         """Collect ALL tool_use blocks. The model may emit a call AND claims in
         the same response; do not return on the first match."""
         raw_dict = response.model_dump() if hasattr(response, "model_dump") else dict(response)
+        # Log token usage when the SDK provides it. Used for live cost tracking
+        # during backfills; harmless when usage is missing (e.g., mocked tests).
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            log.info(
+                "extract.llm.usage",
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+                model=self._model,
+            )
         result = ExtractionResult(raw_response=raw_dict)
 
         for block in response.content:

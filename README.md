@@ -1,41 +1,50 @@
 # trading-signal-research
 
-A pipeline that takes trader content from YouTube (Discord later), pulls structured trade calls out of the messy text, backtests them against market data, and scores creators on how reliable their calls actually are.
+A **personal decision-support platform for ticker selection** that combines (1) YouTube transcript analysis as a first-class indicator class, (2) market data + classical technicals + fundamentals (yfinance), (3) walk-forward strategy backtests, and (4) explainable rankings + LLM-driven entry/exit research with linked evidence.
 
-The point is to evaluate stock-trading content creators with real data — not to run a trading bot.
+The unit of decision is **the ticker, not the creator**. The product is decision support — the user pulls the trigger; the system ranks, explains, and surfaces an implied action label ([ADR 0008](docs/decisions/0008-action-signal-labeling.md)). It is not a trading bot. Nothing executes orders.
 
 ## How it works
 
 ```
-YouTube ingest ──► transcripts + descriptions ──► call extractor (rules + LLM)
+YouTube ingest ──► transcripts + descriptions ──► call + claim extractor (rules + LLM)
                                                           │
                                                           ▼
-                              market data (yfinance) ──► backtest engine
+                              market data (yfinance) ──► per-call backtest + creator scorecards
                                                           │
                                                           ▼
-                                            creator scorecards
+                                       TickerSignal aggregates (ticker × window × type)
                                                           │
-                                                          ▼
-                                          ranking model ──► alerts + dashboard
+                              ┌───────────────────────────┴────────────────────────┐
+                              ▼                                                    ▼
+                  Strategy walk-forward backtest                    TickerResearchView (per ticker)
+                  (mention_momentum, bullish_catalyst,              ├─ technicals + valuation
+                  creator_consensus — ADR 0007)                     ├─ rule-based setup + rubric
+                                                                    ├─ ActionSignal (ADR 0008)
+                                                                    ├─ Quick research (1 LLM call)
+                                                                    └─ Deep research (4 agents + judge)
 ```
 
-The whole thing is source-agnostic — there's a `SourceAdapter` interface so Discord (and anything else later) can plug in without touching the downstream stages.
+Source-agnostic from day 1: a `SourceAdapter` interface (see [ADR 0001](docs/decisions/0001-source-abstraction.md)) is the only thing that knows about YouTube. Discord plugs in as another adapter without touching downstream stages.
 
-Full design: [docs/architecture.md](docs/architecture.md). Decisions: [docs/decisions/](docs/decisions/).
+Full design: [docs/architecture.md](docs/architecture.md). Decisions: [docs/decisions/](docs/decisions/). Recent session deltas: [docs/recent-changes-2026-05-08.md](docs/recent-changes-2026-05-08.md), [docs/recent-changes-2026-05-07.md](docs/recent-changes-2026-05-07.md).
 
 ## Status
 
 | Phase | What | Status |
 |---|---|---|
-| 0 | Repo + foundations | done |
-| 1a | YouTube ingestion + data model | done |
-| 1b | Normalization, ticker recovery, Whisper fallback, Data API | done |
-| 2 | Hybrid call extraction (rules + LLM) | done |
-| 3 | Market data + backtest engine | done |
-| 4 | Creator scorecards | done |
-| 5 | Ranking model | next |
-| 6 | Alerts + dashboard ("mini Bloomberg terminal") | |
-| 7 | Discord source | |
+| 0–4 | Foundations: ingest + normalize + extract + per-call backtest + creator scorecards | done |
+| C | Claims schema + extractor v2 (`Claim` ORM, LLM tool-use extension) | done — ADR 0006 |
+| D | TickerSignal materialization (4 types × 3 windows) | done — ADR 0006 |
+| E | Ticker-first dashboard (ResearchView, scan, watchlist board) | done |
+| F | Strategy + walk-forward harness (3 baselines + portfolio metrics + calibration) | done — ADR 0007 |
+| H | Implied action labels (BUY/HOLD/SELL-style derived view) | done — [ADR 0008](docs/decisions/0008-action-signal-labeling.md) |
+| I | Entry/Exit research — Quick mode (single Haiku call, ~$0.01) | done — [plan](docs/entry-exit-research-plan.md) |
+| J | Entry/Exit research — Deep mode (4 parallel analysts + Sonnet judge, ~$0.10) | done |
+| B | 341-doc extraction backfill | partial — awaits spend approval |
+| K | SSE streaming for Deep mode (per-agent progress) | proposed |
+| G | ML ranker | gated on F + ≥6 months claim data |
+| 7 | Discord adapter | future |
 
 ## Setup
 
@@ -59,18 +68,27 @@ brew install ffmpeg          # macOS; on linux: apt install ffmpeg
 
 ## CLI
 
-Everything runs through one `tsr` command:
+Everything operator-facing runs through one `tsr` command:
 
 ```bash
-tsr initdb               # create the SQLite schema
+# Pipeline
+tsr initdb               # create the SQLite schema (dev only — prod uses Alembic)
 tsr ingest               # pull videos + transcripts for all active creators
-tsr extract              # run the call extractor over new documents
-tsr backtest             # compute outcomes for accepted calls
+tsr extract              # hybrid call+claim extractor over new docs
+tsr backtest             # compute per-call outcomes (ADR 0003)
 tsr score                # recompute creator scorecards
-tsr rank                 # rank new calls (Phase 5, not yet implemented)
+tsr aggregate-signals    # materialize TickerSignal rows (ADR 0006)
+
+# Research view (per-ticker)
+tsr research AAPL                              # full TickerResearchView
+tsr scan --watchlist                           # ranked status board for pinned tickers
+tsr scan --tickers AAPL,NVDA,TSLA              # ad-hoc N-ticker scan
+
+# Strategy walk-forward (ADR 0007)
+tsr backtest-strategy mention_momentum --start 2025-09-01 --end 2025-12-01
 ```
 
-A typical end-to-end run is `ingest → extract → backtest → score`.
+The dashboard (Next.js, see [apps/web/](apps/web/)) is a separate process from `tsr`; it talks to the FastAPI in [apps/api/](apps/api/) which exposes `/tickers/{t}/research`, `/research/scan`, `/research/quick/{t}` (single LLM call), and `/research/deep/{t}` (4-agent multi-lens debate).
 
 ## Tracked creators
 
@@ -136,16 +154,23 @@ src/app/
   normalize/            transcript cleaning + ticker recovery
   extract/              prefilter, LLM extractor, validator, gold-set eval
   market/               yfinance client + cache, calendar, snapshots
-  backtest/             activation rules + outcome computation
+  backtest/             activation + outcomes + walk-forward harness + metrics + calibration
   scoring/              Wilson CIs, expectancy, creator scorecards
-  modeling/             ranker (Phase 5 — empty for now)
+  aggregation/          TickerSignal aggregator (ADR 0006)
+  analysis/             random-ticker research view: indicators, levels, setup, status,
+                        action labels (ADR 0008), entry zones, valuation, scan
+  strategies/           ADR 0007 — Strategy ABC + 3 baselines
+  research/             entry/exit research feature: schema, exits, context, quick (1
+                        LLM call), deep (4 agents + judge), agents/ subpackage
+  modeling/             ranker (deferred — empty for now)
   reporting/            leaderboard rendering
 configs/                creators.yaml, universe.csv, settings.yaml
 data/                   ingested data + caches (gitignored except gold/)
 notebooks/              eval reports — read-only consumers of src/app
-tests/                  unit + integration tests (113 currently)
-docs/                   architecture overview + ADRs + disclaimer
-apps/web/               dashboard (Phase 6, placeholder for now)
+tests/                  unit + integration (352 passing as of 2026-05-08)
+docs/                   architecture overview + ADRs (0001–0008) + design memos + disclaimer
+apps/api/               FastAPI read-only views + research endpoints (separate process)
+apps/web/               Next.js 14 dashboard (App Router, JetBrains Mono terminal aesthetic)
 ```
 
 ## Conventions worth knowing

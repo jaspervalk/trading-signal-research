@@ -2,26 +2,38 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { use } from "react";
 
-import { Card, CardHeader, Badge } from "@/components/Card";
+import { Annotations } from "@/components/Annotations";
+import { Badge } from "@/components/Card";
+import { ClaimsFeed } from "@/components/ClaimsFeed";
+import { CreatorCoverage } from "@/components/CreatorCoverage";
+import { EntryExitPanel } from "@/components/EntryExitPanel";
+import { EntryZoneCard } from "@/components/EntryZoneCard";
+import { LiveSignalStrip } from "@/components/LiveSignalStrip";
+import { MethodologyFooter } from "@/components/MethodologyFooter";
 import { PriceChart } from "@/components/PriceChart";
+import { ResearchStatusStrip } from "@/components/ResearchStatusStrip";
+import { SetupCard } from "@/components/SetupCard";
+import { StyleFitCard } from "@/components/StyleFitCard";
+import { Tags } from "@/components/Tags";
+import { TechnicalsCard } from "@/components/TechnicalsCard";
+import { TickerCallsTable } from "@/components/TickerCallsTable";
+import { ValuationPanel } from "@/components/ValuationPanel";
 import { WatchlistButton } from "@/components/WatchlistButton";
 import { api } from "@/lib/api";
-import { cn, fmtDate, fmtPct, pctColor, statusColor } from "@/lib/utils";
+import { cn, daysSince, fmtPct, pctColor } from "@/lib/utils";
 
+/**
+ * Ticker detail page — the headline view of the dashboard per ADR 0005.
+ * 8-section composite per docs/dashboard-ticker-page-ia.md.
+ */
 export default function TickerDetailPage({
   params,
 }: {
-  params: Promise<{ ticker: string }>;
+  params: { ticker: string };
 }) {
-  const { ticker: rawTicker } = use(params);
-  const ticker = rawTicker.toUpperCase();
+  const ticker = params.ticker.toUpperCase();
 
-  const { data: summary } = useQuery({
-    queryKey: ["ticker-summary", ticker],
-    queryFn: () => api.tickers.get(ticker),
-  });
   const { data: bars } = useQuery({
     queryKey: ["ticker-bars", ticker],
     queryFn: () => api.tickers.bars(ticker, 365),
@@ -30,79 +42,159 @@ export default function TickerDetailPage({
     queryKey: ["ticker-calls", ticker],
     queryFn: () => api.tickers.calls(ticker),
   });
+  const { data: claims } = useQuery({
+    queryKey: ["ticker-claims", ticker],
+    queryFn: () => api.tickers.claims(ticker, { limit: 50 }),
+  });
+  const { data: signals } = useQuery({
+    queryKey: ["ticker-signals", ticker],
+    queryFn: () => api.tickers.signals(ticker),
+  });
+  const { data: research, error: researchError } = useQuery({
+    queryKey: ["ticker-research", ticker],
+    queryFn: () => api.tickers.research(ticker, { fetch_metadata: true }),
+    // Yahoo bar fetch + benchmark fetch + analysis composition is ~1-3s on cold cache.
+    staleTime: 60_000,
+  });
+
+  // Header price/day-change is derived from the last two daily bars.
+  const lastBar = bars?.bars.at(-1);
+  const prevBar = bars?.bars.at(-2);
+  const dayChangePct =
+    lastBar && prevBar ? (lastBar.close - prevBar.close) / prevBar.close : null;
+  const dayChangeAbs = lastBar && prevBar ? lastBar.close - prevBar.close : null;
+
+  // Most-recent mention across calls + claims drives the "historical only" gate.
+  const mentionTimes: number[] = [
+    ...(calls?.map((c) => new Date(c.posted_at).getTime()) ?? []),
+    ...(claims?.map((c) => new Date(c.posted_at).getTime()) ?? []),
+  ];
+  const mostRecentMention = mentionTimes.length > 0 ? new Date(Math.max(...mentionTimes)) : null;
+  const mostRecentMentionDays = daysSince(mostRecentMention);
+  const isHistoricalOnly =
+    mostRecentMentionDays !== null && mostRecentMentionDays > 90;
+
+  const totalMentions = (calls?.length ?? 0) + (claims?.length ?? 0);
+  const lastExtractorRun = claims?.[0]?.extracted_at ?? null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <Link href="/tickers" className="text-sm text-[var(--muted-foreground)] hover:underline">← Tickers</Link>
-          <h1 className="text-3xl font-semibold tracking-tight font-mono mt-1">{ticker}</h1>
-          {summary && (
-            <p className="text-sm text-[var(--muted-foreground)] mt-1 num">
-              {summary.n_calls} call{summary.n_calls === 1 ? "" : "s"} ·{" "}
-              {Object.entries(summary.by_direction).map(([d, n]) => `${n} ${d}`).join(" · ") || "—"}
-            </p>
-          )}
+    <div className="space-y-4 font-mono-jb">
+      {/* Section 1 — Header strip */}
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-1.5">
+          <Link
+            href="/tickers"
+            className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] hover:text-[var(--info)]"
+          >
+            ← Tickers
+          </Link>
+          <div className="flex items-baseline gap-4 flex-wrap">
+            <h1 className="text-4xl font-semibold tracking-tight">{ticker}</h1>
+            {lastBar && (
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-medium tabular-nums">
+                  ${lastBar.close.toFixed(2)}
+                </span>
+                {dayChangeAbs !== null && dayChangePct !== null && (
+                  <span className={cn("text-sm tabular-nums", pctColor(dayChangePct))}>
+                    {dayChangeAbs > 0 ? "+" : ""}
+                    {dayChangeAbs.toFixed(2)} {fmtPct(dayChangePct)}
+                  </span>
+                )}
+              </div>
+            )}
+            {isHistoricalOnly && (
+              <Badge className="text-[var(--warning)] border-[color:rgba(245,158,11,0.4)] bg-[color:rgba(245,158,11,0.06)] uppercase tracking-wider">
+                Historical only · {mostRecentMentionDays}d ago
+              </Badge>
+            )}
+          </div>
+          <Link
+            href="/methodology"
+            className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] hover:text-[var(--info)]"
+          >
+            Decision support, not advice — see methodology →
+          </Link>
         </div>
         <WatchlistButton entityType="ticker" entityId={ticker} />
+      </header>
+
+      {/* Research status strip — the headline answer */}
+      {research && <ResearchStatusStrip view={research} />}
+      {researchError && (
+        <p className="text-[11px] uppercase tracking-wider text-[var(--negative)] font-mono-jb">
+          Research API error · {(researchError as Error).message}
+        </p>
+      )}
+
+      {/* Three-column grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)_360px] gap-5 items-start">
+        {/* Left rail — Live signals + technicals */}
+        <div className="space-y-4">
+          <LiveSignalStrip ticker={ticker} />
+          {research && (
+            <TechnicalsCard
+              indicators={research.indicators}
+              levels={research.levels}
+              market={research.market}
+            />
+          )}
+        </div>
+
+        {/* Center — chart + setup + entry zone + claims feed */}
+        <div className="space-y-4 min-w-0">
+          <section className="bg-[var(--panel)] border border-[var(--border)]">
+            <header className="px-4 py-3 border-b border-[var(--hairline-2)]">
+              <h2 className="text-sm tracking-tight">Price · last 365 days</h2>
+              <p className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] mt-1">
+                Markers at extracted-call timestamps · color = 5d return
+              </p>
+            </header>
+            <div className="p-3">
+              {!bars || bars.bars.length === 0 ? (
+                <p className="text-xs text-[var(--muted-foreground)] py-8 text-center">
+                  No price data — yfinance returned nothing for this ticker.
+                </p>
+              ) : (
+                <PriceChart bars={bars.bars} calls={calls ?? []} />
+              )}
+            </div>
+          </section>
+          {research && (
+            <SetupCard setup={research.setup} status={research.status} />
+          )}
+          {research && <EntryZoneCard entry={research.entry_zone} />}
+          <EntryExitPanel ticker={ticker} />
+          <ClaimsFeed ticker={ticker} />
+        </div>
+
+        {/* Right rail — Style fit + valuation + calls + coverage + notes */}
+        <div className="space-y-4">
+          {research && <StyleFitCard styleFit={research.style_fit} />}
+          {research && <ValuationPanel valuation={research.valuation} />}
+          <TickerCallsTable calls={calls ?? []} />
+          <CreatorCoverage ticker={ticker} />
+          <section className="bg-[var(--panel)] border border-[var(--border)]">
+            <header className="px-4 py-3 border-b border-[var(--hairline-2)]">
+              <h2 className="text-sm tracking-tight">Notes &amp; review</h2>
+              <p className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] mt-1">
+                Personal scratchpad · not synced
+              </p>
+            </header>
+            <div className="p-4 space-y-4">
+              <Annotations entityType="ticker" entityId={ticker} />
+              <Tags entityType="ticker" entityId={ticker} />
+            </div>
+          </section>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader title="Price (last 365 days)" subtitle="Markers show the moment of each extracted call. Colour = 5d return after the call (green positive, red negative, grey not yet evaluated)." />
-        {!bars || bars.bars.length === 0 ? (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            No price data — yfinance returned nothing for this ticker.
-          </p>
-        ) : (
-          <PriceChart bars={bars.bars} calls={calls ?? []} />
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader title={`All calls on ${ticker} (${calls?.length ?? 0})`} />
-        {!calls || calls.length === 0 ? (
-          <p className="text-sm text-[var(--muted-foreground)]">No calls yet.</p>
-        ) : (
-          <div className="overflow-x-auto -mx-6">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-left text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
-                  <th className="py-2 px-4">Posted</th>
-                  <th className="py-2 px-4">Creator</th>
-                  <th className="py-2 px-4">Direction</th>
-                  <th className="py-2 px-4">Entry</th>
-                  <th className="py-2 px-4 text-right">Conf</th>
-                  <th className="py-2 px-4">Status</th>
-                  <th className="py-2 px-4 text-right">5d return</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calls.map((c) => (
-                  <tr key={c.call_id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]">
-                    <td className="py-2.5 px-4 num text-[var(--muted-foreground)]">{fmtDate(c.posted_at)}</td>
-                    <td className="py-2.5 px-4">
-                      <Link href={`/creators/${c.creator_id}`} className="hover:underline">{c.creator_name}</Link>
-                    </td>
-                    <td className="py-2.5 px-4">{c.direction}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">
-                      {c.entry_type}{c.entry_price ? ` @ ${c.entry_price}` : ""}
-                    </td>
-                    <td className="py-2.5 px-4 text-right num">{c.final_confidence.toFixed(2)}</td>
-                    <td className="py-2.5 px-4">
-                      <Link href={`/calls/${c.call_id}`}>
-                        <Badge className={statusColor(c.status)}>{c.status}</Badge>
-                      </Link>
-                    </td>
-                    <td className={cn("py-2.5 px-4 text-right num", pctColor(c.return_5d))}>
-                      {c.return_5d !== null ? fmtPct(c.return_5d) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      {/* Section 8 — Methodology / data-state footer */}
+      <MethodologyFooter
+        totalMentions={totalMentions}
+        signals={signals}
+        lastExtractorRun={lastExtractorRun}
+      />
     </div>
   );
 }

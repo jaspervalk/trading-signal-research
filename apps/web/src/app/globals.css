@@ -26,6 +26,11 @@
   --positive: #22c55e;
   --negative: #ef4444;
   --warning: #f59e0b;
+  --info: #22d3ee;
+  --panel: #141414;
+  --panel-2: #0f0f0f;
+  --hairline-2: #1f1f1f;
+  --muted-2: #8c8c97;
 }
 
 body {
@@ -41,5 +46,29 @@ body {
   }
   .num {
     font-variant-numeric: tabular-nums;
+  }
+  .font-mono-jb {
+    font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .font-serif-italic {
+    font-family: var(--font-newsreader), Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+  }
+  /* Inactive-demo hatched overlay for the LOW-N warning banner. */
+  .demo-hatch {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(245, 158, 11, 0.05) 0,
+      rgba(245, 158, 11, 0.05) 6px,
+      transparent 6px,
+      transparent 14px
+    );
+  }
+  /* Notebook-paper ruled lines for the notes textarea. */
+  .notes-rule {
+    background-image: linear-gradient(to bottom, transparent 23px, var(--hairline-2) 24px);
+    background-size: 100% 24px;
   }
 }

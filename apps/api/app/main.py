@@ -51,12 +51,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — Next.js dev server runs on :3000 by default.
+# CORS — Next.js dev server runs on :3000 by default; :3001 is the fallback when
+# :3000 is occupied by another local project (parallel Healthcare-Policy-Copilot).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -71,6 +74,9 @@ app.include_router(leaderboard.router)
 app.include_router(calls.router)
 app.include_router(documents.router)
 app.include_router(tickers.router)
+from apps.api.app.routes import research  # noqa: E402
+
+app.include_router(research.router)
 app.include_router(annotations.router)
 app.include_router(tags.router)
 app.include_router(watchlist.router)

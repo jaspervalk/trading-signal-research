@@ -40,3 +40,20 @@ universe:
 scoring:
   windows: [all, 365d, 90d]
   min_n_for_scoring: 5
+
+# Walk-forward backtests (ADR 0007).
+#
+# t2_cutoff is the *final test-set boundary* — out-of-sample data after this
+# date is held back for honest evaluation only. The harness REFUSES to evaluate
+# a strategy whose `version` has been changed without bumping the version,
+# which forces a fresh test run.
+#
+# Bumping t2_cutoff is a deliberate act: it should only move forward when
+# enough new history has accumulated to justify a new evaluation cohort.
+# Document any bump in an ADR so future-you can see why.
+walkforward:
+  t2_cutoff: "2026-01-01T00:00:00+00:00"  # UTC — out-of-sample begins here
+  min_n_trades: 30                         # below this, results render as "underpowered"
+  default_rebalance: weekly                # daily | weekly | on_signal
+  cost_bps_grid: [5, 10, 25, 50]           # stress-test set; 10 is the headline
+  benchmark_ticker: SPY

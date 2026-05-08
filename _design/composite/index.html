@@ -1,0 +1,1106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>AAPL · ticker research view — trading-signal-research</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0A0A;
+    --panel: #141414;
+    --panel-2: #0F0F0F;
+    --panel-3: #1A1A1A;
+    --hairline: #262626;
+    --hairline-2: #1F1F1F;
+    --text: #FAFAFA;
+    --muted: #A1A1AA;
+    --muted-2: #71717A;
+    --green: #22C55E;
+    --red: #EF4444;
+    --amber: #F59E0B;
+    --cyan: #22D3EE;
+  }
+  html, body { background: var(--bg); color: var(--text); }
+  body {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-feature-settings: "tnum" 1, "ss01" 1;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.4;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .serif-italic { font-family: 'Newsreader', Georgia, serif; font-style: italic; font-weight: 400; }
+  .panel { background: var(--panel); border: 1px solid var(--hairline); }
+  .hairline { border-color: var(--hairline); }
+  .hairline-2 { border-color: var(--hairline-2); }
+  .text-muted { color: var(--muted); }
+  .text-muted-2 { color: var(--muted-2); }
+  .text-green { color: var(--green); }
+  .text-red { color: var(--red); }
+  .text-amber { color: var(--amber); }
+  .text-cyan { color: var(--cyan); }
+  .bg-panel { background: var(--panel); }
+  .bg-panel-2 { background: var(--panel-2); }
+  .bg-panel-3 { background: var(--panel-3); }
+  .meta {
+    font-size: 9.5px;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .meta-bright { color: var(--text); }
+  .label-xs {
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .num-xl { font-size: 40px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.0; }
+  .num-lg { font-size: 24px; font-weight: 500; letter-spacing: -0.005em; line-height: 1.1; }
+  .num-md { font-size: 16px; font-weight: 500; }
+  .ci   { color: var(--muted); font-size: 11px; }
+  .badge {
+    display: inline-flex; align-items: center;
+    height: 18px; padding: 0 6px;
+    font-size: 10px; letter-spacing: 0.04em;
+    border: 1px solid var(--hairline); color: var(--muted);
+    text-transform: uppercase;
+  }
+  .badge.green { color: var(--green); border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+  .badge.red   { color: var(--red);   border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.06); }
+  .badge.amber { color: var(--amber); border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06); }
+  .badge.cyan  { color: var(--cyan);  border-color: rgba(34,211,238,0.4); background: rgba(34,211,238,0.06); }
+  .badge.flat  { color: var(--muted); }
+  .pillbar {
+    position: relative; height: 4px; background: var(--hairline-2); width: 100%;
+  }
+  .pillbar > .axis {
+    position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px;
+    background: var(--hairline);
+  }
+  .pillbar > .fill {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--green);
+  }
+  .pillbar > .marker {
+    position: absolute; top: -3px; width: 2px; height: 10px; background: var(--text);
+  }
+  table.tsr { width: 100%; border-collapse: collapse; }
+  table.tsr th, table.tsr td { padding: 8px 10px; border-bottom: 1px solid var(--hairline-2); text-align: left; vertical-align: middle; font-size: 12px; }
+  table.tsr th { color: var(--muted); font-weight: 500; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+  table.tsr tr:last-child td { border-bottom: none; }
+  table.tsr td.num { text-align: right; }
+  table.tsr th.num { text-align: right; }
+
+  /* claim drawer */
+  details.claim { border-bottom: 1px solid var(--hairline-2); }
+  details.claim:last-child { border-bottom: none; }
+  details.claim > summary {
+    list-style: none; cursor: pointer;
+    display: grid;
+    grid-template-columns: 92px 170px 80px 90px 60px 1fr 16px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 16px;
+    font-size: 12px;
+  }
+  details.claim > summary::-webkit-details-marker { display: none; }
+  details.claim > summary:hover { background: rgba(255,255,255,0.02); }
+  details.claim .chev { color: var(--muted); transition: transform 0.15s; font-size: 11px; }
+  details.claim[open] .chev { transform: rotate(180deg); color: var(--cyan); }
+  details.claim[open] > summary { background: rgba(34,211,238,0.03); }
+  .drawer {
+    background: var(--panel-2);
+    border-top: 1px solid var(--hairline-2);
+    padding: 28px 32px 22px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .drawer .quote-rule {
+    border-left: 1px solid var(--cyan);
+    padding-left: 22px;
+  }
+  .drawer .quote {
+    font-size: 23px;
+    line-height: 1.45;
+    color: #ECECEC;
+  }
+  .drawer .quote .qm { color: var(--muted-2); font-style: normal; }
+  .drawer .source {
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+  .drawer .source a { color: var(--cyan); text-decoration: none; }
+  .drawer .source a:hover { text-decoration: underline; }
+
+  /* methodology hatched stripe overlay for inactive demo banner */
+  .demo-hatch {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(245,158,11,0.05) 0,
+      rgba(245,158,11,0.05) 6px,
+      transparent 6px,
+      transparent 14px
+    );
+  }
+
+  /* inline sparkline */
+  .spark { display: inline-block; vertical-align: middle; }
+
+  /* design notes aside */
+  #design-notes {
+    border: 1px dashed #3F3F46;
+    background: #0C0C0C;
+    color: #9CA3AF;
+    padding: 14px 18px;
+    margin: 16px;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  #design-notes h4 {
+    color: #D4D4D8;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  #design-notes ul { margin: 4px 0 8px 14px; list-style: square; }
+  #design-notes em { color: var(--cyan); font-style: normal; }
+
+  /* header price tile */
+  .price-up { color: var(--green); }
+  .price-down { color: var(--red); }
+
+  /* placeholder dashed slot */
+  .slot-empty {
+    border: 1px dashed #3F3F46;
+    color: #52525B;
+    font-size: 9.5px;
+    letter-spacing: 0.05em;
+    padding: 4px 8px;
+    height: 22px; display: inline-flex; align-items: center;
+  }
+
+  /* notes textarea */
+  textarea.notes {
+    width: 100%;
+    background:
+      linear-gradient(to bottom, transparent 23px, var(--hairline-2) 24px) 0 0 / 100% 24px;
+    background-color: var(--panel-2);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 24px;
+    padding: 6px 12px 6px 12px;
+    resize: vertical;
+    min-height: 144px;
+    outline: none;
+  }
+  textarea.notes:focus { border-color: var(--cyan); }
+
+  .chip {
+    display: inline-flex; align-items: center; height: 22px;
+    padding: 0 8px; font-size: 10.5px; letter-spacing: 0.04em;
+    border: 1px solid var(--hairline); color: var(--muted);
+    margin-right: 6px; margin-bottom: 6px;
+    cursor: default;
+  }
+  .chip.active { color: var(--cyan); border-color: rgba(34,211,238,0.4); background: rgba(34,211,238,0.06); }
+
+  .star-btn {
+    width: 28px; height: 28px;
+    border: 1px solid var(--hairline);
+    color: var(--amber);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px; cursor: pointer; background: transparent;
+  }
+  .star-btn.on { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.4); }
+
+  /* tile micro-bar with marker */
+  .tile-bar {
+    position: relative; height: 6px; background: var(--hairline-2);
+  }
+  .tile-bar .axis { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #3F3F46; }
+  .tile-bar .fill { position: absolute; top: 0; bottom: 0; }
+  .tile-bar .marker { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--text); }
+  .tile-bar .scale-l, .tile-bar .scale-r {
+    position: absolute; bottom: -14px; font-size: 9px; color: var(--muted-2);
+    letter-spacing: 0.05em;
+  }
+  .tile-bar .scale-l { left: 0; }
+  .tile-bar .scale-r { right: 0; }
+
+  hr.h-rule { border: none; border-top: 1px solid var(--hairline-2); margin: 0; }
+
+  /* ADR link */
+  .adr-link { color: var(--cyan); text-decoration: none; display: block; padding: 4px 0; font-size: 11.5px; }
+  .adr-link:hover { text-decoration: underline; }
+
+  /* coverage sparkline container */
+  .cov-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hairline-2);
+  }
+  .cov-row:last-child { border-bottom: none; }
+
+  /* terminal cursor */
+  .cursor { display: inline-block; width: 8px; height: 14px; background: var(--cyan); vertical-align: -2px; animation: blink 1s steps(2,start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Junior-designer pass header (stripped at port time) -->
+<aside id="design-notes">
+  <h4>// design-notes — composite production candidate (strip at port)</h4>
+  <p><strong>What this is:</strong> the merge of <em>Terminal A</em> (dark Bloomberg/Tufte chassis) + <em>Brief B</em> (editorial pull-quote moment) + <em>Tape C</em> (bracketed metadata grammar &amp; epistemic-honesty footer). Intended as the visual spec for production port to <code>apps/web/src/app/tickers/[ticker]/page.tsx</code>.</p>
+  <h4 class="mt-3">// 3 transplant decisions &amp; reasoning</h4>
+  <ul>
+    <li><em>Newsreader serif-italic confined to expanded claim drawer only.</em> The page reads like a terminal during scan; only when a reviewer stops to read the verbatim creator voice does it flip register. Mixing serif elsewhere would dilute the chassis.</li>
+    <li><em>Bracketed metadata grammar (Tape) lifted everywhere; ASCII box-drawing rules left behind.</em> The <code>[N=4][W=7d]</code> idiom is signal-dense and Tufte-compatible; ASCII boxes would fight the hairline 1px-rule chassis.</li>
+    <li><em>N-warning banner kept in styled-inactive demo state.</em> Per locked constraint &mdash; sample-size warnings are a visible product feature even when suppressed; the production code needs a documented treatment for the live state.</li>
+  </ul>
+  <h4 class="mt-3">// 3 things still open before port</h4>
+  <ul>
+    <li>Responsive collapse strategy &lt;1280px (3-col -&gt; 2-col -&gt; stacked); right-rail creator coverage may want to demote to a tab on mobile.</li>
+    <li>Drawer open/close transition timing &mdash; currently instant via <code>&lt;details&gt;</code>; consider 120ms ease-out height + 80ms cyan-rule fade-in for the editorial moment.</li>
+    <li>Sparkline interactivity &mdash; static SVG here; production should hover-link to the underlying claim rows (filter coverage panel by selected creator).</li>
+  </ul>
+  <p class="mt-2 text-[10px] text-zinc-600">// this aside is stripped when porting to apps/web/src/app/tickers/[ticker]/page.tsx</p>
+</aside>
+
+<main class="mx-auto" style="max-width: 1440px; padding: 8px 16px 32px;">
+
+  <!-- ============== 1. HEADER STRIP ============== -->
+  <section class="panel" style="padding: 18px 22px;">
+    <div class="flex items-start justify-between gap-6">
+
+      <!-- left: ticker + price -->
+      <div class="flex items-baseline gap-8">
+        <div>
+          <div class="meta mb-1">[TICKER] [EXCH:NASDAQ] [SECT:TECH] [AS_OF:2026-05-05 14:32 UTC]</div>
+          <div class="flex items-baseline gap-4">
+            <div class="mono" style="font-size: 44px; font-weight: 700; letter-spacing: -0.01em; line-height: 1;">AAPL</div>
+            <div class="flex items-baseline gap-3">
+              <div class="mono" style="font-size: 26px; font-weight: 500;">$238.45</div>
+              <div class="mono price-up" style="font-size: 14px;">+1.94 (+0.82%)</div>
+              <div class="meta" style="margin-left: 6px;">[D]</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 pl-6" style="border-left: 1px solid var(--hairline);">
+          <div class="meta">[OPEN] [HIGH] [LOW] [PREV_CLOSE]</div>
+          <div class="mono text-[12px] flex gap-5">
+            <span><span class="text-muted-2">O</span> 236.71</span>
+            <span><span class="text-muted-2">H</span> 239.10</span>
+            <span><span class="text-muted-2">L</span> 235.92</span>
+            <span><span class="text-muted-2">PC</span> 236.51</span>
+          </div>
+          <div class="meta">[VOL: 41.2M] [AVG_VOL_30D: 52.6M] [BETA: 1.21]</div>
+        </div>
+      </div>
+
+      <!-- right: actions + slot -->
+      <div class="flex items-center gap-3">
+        <!-- Historical-only badge slot (rendered as dashed empty placeholder per spec) -->
+        <div class="flex flex-col items-end gap-1">
+          <div class="meta text-muted-2">[HISTORICAL_ONLY_SLOT]</div>
+          <div class="slot-empty">— inactive · most-recent &lt;90d —</div>
+        </div>
+        <div style="width: 1px; background: var(--hairline); align-self: stretch;"></div>
+        <a href="#methodology" class="text-cyan" style="font-size: 11px; text-decoration: none;">decision support, not advice — see methodology →</a>
+        <button class="star-btn on" title="Watchlist">★</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============== 3-COLUMN MAIN GRID ============== -->
+  <div class="grid mt-4" style="grid-template-columns: 340px 1fr 360px; gap: 16px;">
+
+    <!-- =================================================== -->
+    <!-- LEFT RAIL: signal tiles (6) -->
+    <!-- =================================================== -->
+    <div class="flex flex-col gap-4">
+
+      <!-- Section header -->
+      <div class="panel" style="padding: 12px 14px;">
+        <div class="flex items-baseline justify-between">
+          <div class="label-xs meta-bright">Live signal strip</div>
+          <div class="meta">[6 TILES] [3×2]</div>
+        </div>
+        <div class="meta mt-1">credibility-weighted polarity per ticker × window × signal_type</div>
+      </div>
+
+      <!-- 7d row -->
+      <div class="grid" style="grid-template-columns: 1fr; gap: 10px;">
+
+        <div class="meta" style="padding-left: 4px;">━━ [WINDOW: 7d] ━━━━━━━━━━━━━━━━━━━━━━━</div>
+
+        <!-- 7d / claims_all -->
+        <div class="panel" style="padding: 14px 14px 18px;">
+          <div class="meta">[N=4] [W=7d] [TYPE:CLAIMS_ALL]</div>
+          <div class="flex items-baseline justify-between mt-2">
+            <div class="mono" style="font-size: 28px; font-weight: 600; line-height: 1;" >+0.62</div>
+            <div class="mono text-[10px] text-muted">cred-weighted</div>
+          </div>
+          <div class="tile-bar mt-3">
+            <div class="axis"></div>
+            <div class="fill" style="left: 50%; width: 31%; background: var(--green);"></div>
+            <div class="marker" style="left: calc(50% + 31%);"></div>
+            <span class="scale-l">−1.0</span><span class="scale-r">+1.0</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-7">
+            <span class="mono text-[10px] text-muted-2">n_creators</span>
+            <span class="mono text-[11px]">3</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="mono text-[10px] text-muted-2">net_polarity (raw)</span>
+            <span class="mono text-[11px] text-green">+0.50</span>
+          </div>
+        </div>
+
+        <!-- 7d / claims_factual -->
+        <div class="panel" style="padding: 14px 14px 18px;">
+          <div class="meta">[N=2] [W=7d] [TYPE:CLAIMS_FACTUAL]</div>
+          <div class="flex items-baseline justify-between mt-2">
+            <div class="mono text-muted" style="font-size: 28px; font-weight: 600; line-height: 1;">+0.00</div>
+            <div class="mono text-[10px] text-muted">cred-weighted</div>
+          </div>
+          <div class="tile-bar mt-3">
+            <div class="axis"></div>
+            <div class="marker" style="left: 50%; background: var(--muted);"></div>
+            <span class="scale-l">−1.0</span><span class="scale-r">+1.0</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-7">
+            <span class="mono text-[10px] text-muted-2">n_creators</span>
+            <span class="mono text-[11px]">2</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="mono text-[10px] text-muted-2">net_polarity (raw)</span>
+            <span class="mono text-[11px] text-muted">+0.00</span>
+          </div>
+        </div>
+
+        <!-- 7d / creator_consensus -->
+        <div class="panel" style="padding: 14px 14px 18px;">
+          <div class="meta">[N=4] [W=7d] [TYPE:CREATOR_CONSENSUS]</div>
+          <div class="flex items-baseline justify-between mt-2">
+            <div class="mono text-green" style="font-size: 28px; font-weight: 600; line-height: 1;">+0.62</div>
+            <div class="mono text-[10px] text-muted">cred-weighted</div>
+          </div>
+          <div class="tile-bar mt-3">
+            <div class="axis"></div>
+            <div class="fill" style="left: 50%; width: 31%; background: var(--green);"></div>
+            <div class="marker" style="left: calc(50% + 31%);"></div>
+            <span class="scale-l">−1.0</span><span class="scale-r">+1.0</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-7">
+            <span class="mono text-[10px] text-muted-2">n_creators</span>
+            <span class="mono text-[11px]">3</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="mono text-[10px] text-muted-2">net_polarity (raw)</span>
+            <span class="mono text-[11px] text-green">+0.50</span>
+          </div>
+        </div>
+
+        <div class="meta mt-1" style="padding-left: 4px;">━━ [WINDOW: 30d] ━━━━━━━━━━━━━━━━━━━━━</div>
+
+        <!-- 30d / claims_all -->
+        <div class="panel" style="padding: 14px 14px 18px;">
+          <div class="meta">[N=11] [W=30d] [TYPE:CLAIMS_ALL]</div>
+          <div class="flex items-baseline justify-between mt-2">
+            <div class="mono text-green" style="font-size: 28px; font-weight: 600; line-height: 1;">+0.48</div>
+            <div class="mono text-[10px] text-muted">cred-weighted</div>
+          </div>
+          <div class="tile-bar mt-3">
+            <div class="axis"></div>
+            <div class="fill" style="left: 50%; width: 24%; background: var(--green);"></div>
+            <div class="marker" style="left: calc(50% + 24%);"></div>
+            <span class="scale-l">−1.0</span><span class="scale-r">+1.0</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-7">
+            <span class="mono text-[10px] text-muted-2">n_creators</span>
+            <span class="mono text-[11px]">5</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="mono text-[10px] text-muted-2">net_polarity (raw)</span>
+            <span class="mono text-[11px] text-green">+0.36</span>
+          </div>
+        </div>
+
+        <!-- 30d / claims_factual -->
+        <div class="panel" style="padding: 14px 14px 18px;">
+          <div class="meta">[N=4] [W=30d] [TYPE:CLAIMS_FACTUAL]</div>
+          <div class="flex items-baseline justify-between mt-2">
+            <div class="mono text-green" style="font-size: 28px; font-weight: 600; line-height: 1;">+0.30</div>
+            <div class="mono text-[10px] text-muted">cred-weighted</div>
+          </div>
+          <div class="tile-bar mt-3">
+            <div class="axis"></div>
+            <div class="fill" style="left: 50%; width: 15%; background: var(--green);"></div>
+            <div class="marker" style="left: calc(50% + 15%);"></div>
+            <span class="scale-l">−1.0</span><span class="scale-r">+1.0</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-7">
+            <span class="mono text-[10px] text-muted-2">n_creators</span>
+            <span class="mono text-[11px]">3</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="mono text-[10px] text-muted-2">net_polarity (raw)</span>
+            <span class="mono text-[11px] text-green">+0.25</span>
+          </div>
+        </div>
+
+        <!-- 30d / creator_consensus -->
+        <div class="panel" style="padding: 14px 14px 18px;">
+          <div class="meta">[N=11] [W=30d] [TYPE:CREATOR_CONSENSUS]</div>
+          <div class="flex items-baseline justify-between mt-2">
+            <div class="mono text-green" style="font-size: 28px; font-weight: 600; line-height: 1;">+0.48</div>
+            <div class="mono text-[10px] text-muted">cred-weighted</div>
+          </div>
+          <div class="tile-bar mt-3">
+            <div class="axis"></div>
+            <div class="fill" style="left: 50%; width: 24%; background: var(--green);"></div>
+            <div class="marker" style="left: calc(50% + 24%);"></div>
+            <span class="scale-l">−1.0</span><span class="scale-r">+1.0</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-7">
+            <span class="mono text-[10px] text-muted-2">n_creators</span>
+            <span class="mono text-[11px]">5</span>
+          </div>
+          <div class="flex items-baseline justify-between mt-1">
+            <span class="mono text-[10px] text-muted-2">net_polarity (raw)</span>
+            <span class="mono text-[11px] text-green">+0.36</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- =================================================== -->
+    <!-- CENTER: chart + claims feed -->
+    <!-- =================================================== -->
+    <div class="flex flex-col gap-4">
+
+      <!-- 3. PRICE CHART -->
+      <div class="panel" style="padding: 14px 16px 12px;">
+        <div class="flex items-baseline justify-between mb-2">
+          <div>
+            <div class="label-xs meta-bright">Price · 365d daily · with call markers</div>
+            <div class="meta mt-0.5">[BARS:DAILY] [WIN:365d] [MARKERS:4_CALLS] [TZ:NEW_YORK]</div>
+          </div>
+          <div class="meta">
+            <span class="text-green">●</span> +5d
+            <span class="text-red ml-2">●</span> −5d
+            <span class="text-amber ml-2">●</span> pending
+          </div>
+        </div>
+
+        <svg viewBox="0 0 720 280" width="100%" height="280" style="display:block;">
+          <defs>
+            <pattern id="grid" width="60" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 60 0 L 0 0 0 40" fill="none" stroke="#1F1F1F" stroke-width="1"/>
+            </pattern>
+          </defs>
+          <!-- background grid -->
+          <rect x="40" y="10" width="660" height="230" fill="url(#grid)"/>
+          <!-- y axis labels (220-260) -->
+          <g font-family="JetBrains Mono" font-size="9" fill="#71717A" text-anchor="end">
+            <text x="36" y="14">260</text>
+            <text x="36" y="61">250</text>
+            <text x="36" y="108">240</text>
+            <text x="36" y="155">230</text>
+            <text x="36" y="202">220</text>
+            <text x="36" y="244">210</text>
+          </g>
+          <!-- x axis quarterly ticks -->
+          <g font-family="JetBrains Mono" font-size="9" fill="#71717A" text-anchor="middle">
+            <text x="120" y="262">JUL '25</text>
+            <text x="280" y="262">OCT '25</text>
+            <text x="440" y="262">JAN '26</text>
+            <text x="600" y="262">APR '26</text>
+          </g>
+          <!-- axis lines -->
+          <line x1="40" y1="240" x2="700" y2="240" stroke="#3F3F46" stroke-width="1"/>
+          <line x1="40" y1="10" x2="40" y2="240" stroke="#3F3F46" stroke-width="1"/>
+
+          <!-- candles (approx 365d compressed; ~80 wicks) -->
+          <g stroke-width="1">
+            <!-- Procedural candles. Each candle: wick line + body rect. green = hollow, red = filled. -->
+            <!-- Group 1: gentle uptrend Jul-Sep -->
+            <g>
+              <!-- repeating pattern; approximated to give chart aesthetic -->
+              <g stroke="#22C55E"><line x1="50" y1="180" x2="50" y2="190"/><rect x="47.5" y="183" width="5" height="6" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="58" y1="178" x2="58" y2="188"/><rect x="55.5" y="181" width="5" height="6" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="66" y1="176" x2="66" y2="190"/><rect x="63.5" y="179" width="5" height="9" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="74" y1="172" x2="74" y2="186"/><rect x="71.5" y="175" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="82" y1="168" x2="82" y2="180"/><rect x="79.5" y="171" width="5" height="7" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="90" y1="170" x2="90" y2="184"/><rect x="87.5" y="173" width="5" height="9" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="98" y1="166" x2="98" y2="180"/><rect x="95.5" y="169" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="106" y1="160" x2="106" y2="174"/><rect x="103.5" y="163" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="114" y1="156" x2="114" y2="170"/><rect x="111.5" y="159" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="122" y1="158" x2="122" y2="172"/><rect x="119.5" y="161" width="5" height="9" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="130" y1="152" x2="130" y2="166"/><rect x="127.5" y="155" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="138" y1="148" x2="138" y2="162"/><rect x="135.5" y="151" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="146" y1="150" x2="146" y2="166"/><rect x="143.5" y="153" width="5" height="11" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="154" y1="146" x2="154" y2="162"/><rect x="151.5" y="149" width="5" height="11" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="162" y1="142" x2="162" y2="156"/><rect x="159.5" y="145" width="5" height="9" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="170" y1="144" x2="170" y2="160"/><rect x="167.5" y="147" width="5" height="11" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="178" y1="138" x2="178" y2="154"/><rect x="175.5" y="141" width="5" height="11" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="186" y1="132" x2="186" y2="148"/><rect x="183.5" y="135" width="5" height="11" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="194" y1="128" x2="194" y2="144"/><rect x="191.5" y="131" width="5" height="11" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="202" y1="130" x2="202" y2="148"/><rect x="199.5" y="133" width="5" height="13" fill="#EF4444"/></g>
+              <g stroke="#EF4444"><line x1="210" y1="138" x2="210" y2="158"/><rect x="207.5" y="141" width="5" height="15" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="218" y1="134" x2="218" y2="152"/><rect x="215.5" y="137" width="5" height="13" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="226" y1="128" x2="226" y2="146"/><rect x="223.5" y="131" width="5" height="13" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="234" y1="132" x2="234" y2="150"/><rect x="231.5" y="135" width="5" height="13" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="242" y1="124" x2="242" y2="142"/><rect x="239.5" y="127" width="5" height="13" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="250" y1="118" x2="250" y2="136"/><rect x="247.5" y="121" width="5" height="13" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="258" y1="114" x2="258" y2="130"/><rect x="255.5" y="117" width="5" height="11" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="266" y1="116" x2="266" y2="136"/><rect x="263.5" y="119" width="5" height="15" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="274" y1="120" x2="274" y2="140"/><rect x="271.5" y="123" width="5" height="15" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="282" y1="114" x2="282" y2="134"/><rect x="279.5" y="117" width="5" height="15" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="290" y1="108" x2="290" y2="128"/><rect x="287.5" y="111" width="5" height="15" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="298" y1="110" x2="298" y2="132"/><rect x="295.5" y="113" width="5" height="17" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="306" y1="104" x2="306" y2="124"/><rect x="303.5" y="107" width="5" height="15" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="314" y1="100" x2="314" y2="120"/><rect x="311.5" y="103" width="5" height="15" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="322" y1="102" x2="322" y2="124"/><rect x="319.5" y="105" width="5" height="17" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="330" y1="96" x2="330" y2="118"/><rect x="327.5" y="99" width="5" height="17" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="338" y1="90" x2="338" y2="112"/><rect x="335.5" y="93" width="5" height="17" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="346" y1="92" x2="346" y2="114"/><rect x="343.5" y="95" width="5" height="17" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="354" y1="86" x2="354" y2="108"/><rect x="351.5" y="89" width="5" height="17" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="362" y1="80" x2="362" y2="102"/><rect x="359.5" y="83" width="5" height="17" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="370" y1="74" x2="370" y2="96"/><rect x="367.5" y="77" width="5" height="17" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="378" y1="76" x2="378" y2="100"/><rect x="375.5" y="79" width="5" height="19" fill="#EF4444"/></g>
+              <g stroke="#EF4444"><line x1="386" y1="84" x2="386" y2="108"/><rect x="383.5" y="87" width="5" height="19" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="394" y1="80" x2="394" y2="104"/><rect x="391.5" y="83" width="5" height="19" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="402" y1="74" x2="402" y2="98"/><rect x="399.5" y="77" width="5" height="19" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="410" y1="68" x2="410" y2="92"/><rect x="407.5" y="71" width="5" height="19" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="418" y1="70" x2="418" y2="96"/><rect x="415.5" y="73" width="5" height="21" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="426" y1="64" x2="426" y2="90"/><rect x="423.5" y="67" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="434" y1="58" x2="434" y2="84"/><rect x="431.5" y="61" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="442" y1="62" x2="442" y2="88"/><rect x="439.5" y="65" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="450" y1="68" x2="450" y2="94"/><rect x="447.5" y="71" width="5" height="21" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="458" y1="64" x2="458" y2="90"/><rect x="455.5" y="67" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="466" y1="58" x2="466" y2="84"/><rect x="463.5" y="61" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="474" y1="62" x2="474" y2="90"/><rect x="471.5" y="65" width="5" height="23" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="482" y1="68" x2="482" y2="94"/><rect x="479.5" y="71" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="490" y1="62" x2="490" y2="88"/><rect x="487.5" y="65" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="498" y1="56" x2="498" y2="82"/><rect x="495.5" y="59" width="5" height="21" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="506" y1="60" x2="506" y2="88"/><rect x="503.5" y="63" width="5" height="23" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="514" y1="64" x2="514" y2="92"/><rect x="511.5" y="67" width="5" height="23" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="522" y1="58" x2="522" y2="86"/><rect x="519.5" y="61" width="5" height="23" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="530" y1="62" x2="530" y2="92"/><rect x="527.5" y="65" width="5" height="25" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="538" y1="68" x2="538" y2="98"/><rect x="535.5" y="71" width="5" height="25" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="546" y1="62" x2="546" y2="92"/><rect x="543.5" y="65" width="5" height="25" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="554" y1="56" x2="554" y2="86"/><rect x="551.5" y="59" width="5" height="25" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="562" y1="58" x2="562" y2="92"/><rect x="559.5" y="61" width="5" height="29" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="570" y1="62" x2="570" y2="96"/><rect x="567.5" y="65" width="5" height="29" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="578" y1="56" x2="578" y2="90"/><rect x="575.5" y="59" width="5" height="29" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="586" y1="50" x2="586" y2="84"/><rect x="583.5" y="53" width="5" height="29" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="594" y1="54" x2="594" y2="92"/><rect x="591.5" y="57" width="5" height="33" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="602" y1="58" x2="602" y2="96"/><rect x="599.5" y="61" width="5" height="33" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="610" y1="52" x2="610" y2="90"/><rect x="607.5" y="55" width="5" height="33" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="618" y1="46" x2="618" y2="84"/><rect x="615.5" y="49" width="5" height="33" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="626" y1="50" x2="626" y2="90"/><rect x="623.5" y="53" width="5" height="35" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="634" y1="56" x2="634" y2="96"/><rect x="631.5" y="59" width="5" height="35" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="642" y1="50" x2="642" y2="90"/><rect x="639.5" y="53" width="5" height="35" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="650" y1="44" x2="650" y2="84"/><rect x="647.5" y="47" width="5" height="35" fill="#0A0A0A"/></g>
+              <g stroke="#EF4444"><line x1="658" y1="48" x2="658" y2="90"/><rect x="655.5" y="51" width="5" height="37" fill="#EF4444"/></g>
+              <g stroke="#22C55E"><line x1="666" y1="54" x2="666" y2="96"/><rect x="663.5" y="57" width="5" height="37" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="674" y1="48" x2="674" y2="90"/><rect x="671.5" y="51" width="5" height="37" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="682" y1="42" x2="682" y2="84"/><rect x="679.5" y="45" width="5" height="37" fill="#0A0A0A"/></g>
+              <g stroke="#22C55E"><line x1="690" y1="38" x2="690" y2="80"/><rect x="687.5" y="41" width="5" height="37" fill="#0A0A0A"/></g>
+            </g>
+          </g>
+
+          <!-- current price horizontal -->
+          <line x1="40" y1="118" x2="700" y2="118" stroke="#22D3EE" stroke-width="1" stroke-dasharray="3,3" opacity="0.7"/>
+          <g>
+            <rect x="700" y="110" width="42" height="16" fill="#22D3EE"/>
+            <text x="703" y="121" font-family="JetBrains Mono" font-size="10" font-weight="600" fill="#0A0A0A">238.45</text>
+          </g>
+
+          <!-- Call markers (4) -->
+          <!-- 2026-04-12 BoWS long market (positive +1.8%) -->
+          <g>
+            <line x1="565" y1="80" x2="565" y2="240" stroke="#22C55E" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.4"/>
+            <circle cx="565" cy="80" r="6" fill="#0A0A0A" stroke="#22C55E" stroke-width="2"/>
+            <circle cx="565" cy="80" r="2" fill="#22C55E"/>
+          </g>
+          <!-- 2026-04-20 TraderLion short trigger (negative -1.1%) -->
+          <g>
+            <line x1="613" y1="60" x2="613" y2="240" stroke="#EF4444" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.4"/>
+            <circle cx="613" cy="60" r="6" fill="#0A0A0A" stroke="#EF4444" stroke-width="2"/>
+            <circle cx="613" cy="60" r="2" fill="#EF4444"/>
+          </g>
+          <!-- 2026-04-25 SMM long limit @232 (positive +3.2%) -->
+          <g>
+            <line x1="650" y1="92" x2="650" y2="240" stroke="#22C55E" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.4"/>
+            <circle cx="650" cy="92" r="6" fill="#0A0A0A" stroke="#22C55E" stroke-width="2"/>
+            <circle cx="650" cy="92" r="2" fill="#22C55E"/>
+          </g>
+          <!-- 2026-05-02 SMM long limit @235 (pending) -->
+          <g>
+            <line x1="690" y1="48" x2="690" y2="240" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.4"/>
+            <circle cx="690" cy="48" r="6" fill="#0A0A0A" stroke="#F59E0B" stroke-width="2"/>
+            <circle cx="690" cy="48" r="2" fill="#F59E0B"/>
+          </g>
+        </svg>
+
+        <div class="meta mt-2 flex justify-between">
+          <span>[CALENDAR:XNYS] [SOURCE:yfinance·cached] [LATEST_BAR:2026-05-05]</span>
+          <span>HOVER A MARKER FOR CALL DETAIL · LIVE-PORT TODO</span>
+        </div>
+      </div>
+
+      <!-- 4. RECENT CLAIMS FEED -->
+      <div class="panel">
+        <div class="flex items-baseline justify-between" style="padding: 12px 16px; border-bottom: 1px solid var(--hairline-2);">
+          <div>
+            <div class="label-xs meta-bright">Recent claims · 30d</div>
+            <div class="meta mt-0.5">[N=5_OF_11_30D] [SORT:posted_at DESC] [CLICK_ROW_TO_EXPAND_DRAWER]</div>
+          </div>
+          <div class="meta">[1+2 EXPANDED · 3-5 COLLAPSED]</div>
+        </div>
+
+        <div>
+
+          <!-- CLAIM 1 — expanded -->
+          <details class="claim" open>
+            <summary>
+              <span class="mono text-muted-2">[2026-04-30]</span>
+              <span class="mono">Stock Market Mentor</span>
+              <span><span class="badge cyan">thesis</span></span>
+              <span><span class="badge flat">opinion</span></span>
+              <span class="mono text-green text-right">+1</span>
+              <span class="mono text-[12px]" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Cup-and-handle setup into earnings</span>
+              <span class="chev">▾</span>
+            </summary>
+            <div class="drawer">
+              <div class="quote-rule">
+                <p class="serif-italic quote">
+                  <span class="qm">«</span>&nbsp;AAPL is setting up for a textbook cup-and-handle into May earnings, looks like a clean breakout above 240 with volume confirmation&nbsp;<span class="qm">»</span>
+                </p>
+              </div>
+              <div class="source flex items-center justify-between">
+                <span>Source: video at 3:14 · <a href="#">open clip in YouTube →</a></span>
+                <span class="meta">[CLAIM_ID:c_4f1a2] [EVIDENCE_QUOTE:VERIFIED·SUBSTRING_MATCH:TRUE]</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- CLAIM 2 — expanded -->
+          <details class="claim" open>
+            <summary>
+              <span class="mono text-muted-2">[2026-04-28]</span>
+              <span class="mono">TraderLion</span>
+              <span><span class="badge red">risk</span></span>
+              <span><span class="badge flat">conditional</span></span>
+              <span class="mono text-red text-right">−1</span>
+              <span class="mono text-[12px]" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">230 break = downtrend</span>
+              <span class="chev">▾</span>
+            </summary>
+            <div class="drawer">
+              <div class="quote-rule">
+                <p class="serif-italic quote">
+                  <span class="qm">«</span>&nbsp;If AAPL loses 230 with conviction we're looking at a multi-week downtrend, no question — that's the line in the sand&nbsp;<span class="qm">»</span>
+                </p>
+              </div>
+              <div class="source flex items-center justify-between">
+                <span>Source: video at 7:42 · <a href="#">open clip in YouTube →</a></span>
+                <span class="meta">[CLAIM_ID:c_4ee03] [EVIDENCE_QUOTE:VERIFIED·SUBSTRING_MATCH:TRUE]</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- CLAIM 3 — collapsed -->
+          <details class="claim">
+            <summary>
+              <span class="mono text-muted-2">[2026-04-22]</span>
+              <span class="mono">Bulls on Wall Street</span>
+              <span><span class="badge green">catalyst</span></span>
+              <span><span class="badge flat">factual</span></span>
+              <span class="mono text-green text-right">+1</span>
+              <span class="mono text-[12px]" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">iPhone 17 Pro pre-orders strong</span>
+              <span class="chev">▾</span>
+            </summary>
+            <div class="drawer">
+              <div class="quote-rule">
+                <p class="serif-italic quote">
+                  <span class="qm">«</span>&nbsp;iPhone 17 Pro pre-orders are the strongest we've seen in three years according to the supply chain checks&nbsp;<span class="qm">»</span>
+                </p>
+              </div>
+              <div class="source flex items-center justify-between">
+                <span>Source: video at 12:08 · <a href="#">open clip in YouTube →</a></span>
+                <span class="meta">[CLAIM_ID:c_4d870] [EVIDENCE_QUOTE:VERIFIED·SUBSTRING_MATCH:TRUE]</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- CLAIM 4 — collapsed -->
+          <details class="claim">
+            <summary>
+              <span class="mono text-muted-2">[2026-04-15]</span>
+              <span class="mono">Adam Mancini</span>
+              <span><span class="badge cyan">level</span></span>
+              <span><span class="badge flat">factual</span></span>
+              <span class="mono text-muted text-right">±0</span>
+              <span class="mono text-[12px]" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Key support 234.50</span>
+              <span class="chev">▾</span>
+            </summary>
+            <div class="drawer">
+              <div class="quote-rule">
+                <p class="serif-italic quote">
+                  <span class="qm">«</span>&nbsp;234.50 is the line bulls have to defend, simple as that&nbsp;<span class="qm">»</span>
+                </p>
+              </div>
+              <div class="source flex items-center justify-between">
+                <span>Source: video at 2:30 · <a href="#">open clip in YouTube →</a></span>
+                <span class="meta">[CLAIM_ID:c_4cc4b] [EVIDENCE_QUOTE:VERIFIED·SUBSTRING_MATCH:TRUE]</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- CLAIM 5 — collapsed -->
+          <details class="claim">
+            <summary>
+              <span class="mono text-muted-2">[2026-04-08]</span>
+              <span class="mono">Stock Market Mentor</span>
+              <span><span class="badge cyan">thesis</span></span>
+              <span><span class="badge flat">opinion</span></span>
+              <span class="mono text-green text-right">+1</span>
+              <span class="mono text-[12px]" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Buy zone 230-235</span>
+              <span class="chev">▾</span>
+            </summary>
+            <div class="drawer">
+              <div class="quote-rule">
+                <p class="serif-italic quote">
+                  <span class="qm">«</span>&nbsp;I'd be a buyer in the 230 to 235 zone all day, that's where I'm placing limits&nbsp;<span class="qm">»</span>
+                </p>
+              </div>
+              <div class="source flex items-center justify-between">
+                <span>Source: video at 5:55 · <a href="#">open clip in YouTube →</a></span>
+                <span class="meta">[CLAIM_ID:c_4ba12] [EVIDENCE_QUOTE:VERIFIED·SUBSTRING_MATCH:TRUE]</span>
+              </div>
+            </div>
+          </details>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- =================================================== -->
+    <!-- RIGHT RAIL: trade calls + creator coverage -->
+    <!-- =================================================== -->
+    <div class="flex flex-col gap-4">
+
+      <!-- 5. TRADE CALLS TABLE -->
+      <div class="panel">
+        <div style="padding: 12px 14px; border-bottom: 1px solid var(--hairline-2);">
+          <div class="label-xs meta-bright">Trade calls · 30d</div>
+          <div class="meta mt-0.5">[N=4] [ACCEPTED:4] [PENDING:1] [HORIZON:5d]</div>
+        </div>
+        <table class="tsr">
+          <thead>
+            <tr>
+              <th>Posted</th>
+              <th>Creator / dir</th>
+              <th>Entry</th>
+              <th class="num">Conf</th>
+              <th class="num">5d</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono text-muted-2">2026-04-25</td>
+              <td>
+                <div class="mono text-[12px]">SMM</div>
+                <div class="mono text-[10px] text-green">long · accepted</div>
+              </td>
+              <td class="mono text-[11px]"><span class="text-muted-2">limit @</span> 232.00</td>
+              <td class="mono num">0.78</td>
+              <td class="mono num text-green">+3.2%</td>
+            </tr>
+            <tr>
+              <td class="mono text-muted-2">2026-04-20</td>
+              <td>
+                <div class="mono text-[12px]">TraderLion</div>
+                <div class="mono text-[10px] text-red">short · accepted</div>
+              </td>
+              <td class="mono text-[11px]"><span class="text-muted-2">trig&lt;</span> 228</td>
+              <td class="mono num">0.65</td>
+              <td class="mono num text-red">−1.1%</td>
+            </tr>
+            <tr>
+              <td class="mono text-muted-2">2026-04-12</td>
+              <td>
+                <div class="mono text-[12px]">BoWS</div>
+                <div class="mono text-[10px] text-green">long · accepted</div>
+              </td>
+              <td class="mono text-[11px]">market</td>
+              <td class="mono num">0.82</td>
+              <td class="mono num text-green">+1.8%</td>
+            </tr>
+            <tr>
+              <td class="mono text-muted-2">2026-05-02</td>
+              <td>
+                <div class="mono text-[12px]">SMM</div>
+                <div class="mono text-[10px] text-amber">long · pending</div>
+              </td>
+              <td class="mono text-[11px]"><span class="text-muted-2">limit @</span> 235.00</td>
+              <td class="mono num">0.71</td>
+              <td class="mono num text-amber">— · pending</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="meta" style="padding: 8px 14px; border-top: 1px solid var(--hairline-2);">
+          [NET_OF:10bps_RT] [LEAKAGE_CHECKS:PASS] [RETURNS_RAW · NOT_RISK_ADJUSTED]
+        </div>
+      </div>
+
+      <!-- 6. CREATOR COVERAGE -->
+      <div class="panel">
+        <div style="padding: 12px 14px; border-bottom: 1px solid var(--hairline-2);">
+          <div class="label-xs meta-bright">Creator coverage</div>
+          <div class="meta mt-0.5">[N=4] [SORT:cred_desc·mentions_desc] [SCOPE:THIS_TICKER]</div>
+        </div>
+
+        <!-- TraderLion -->
+        <div class="cov-row">
+          <div>
+            <div class="meta">[N_CALLS=3] [N_CLAIMS=5] [HR_LCI=0.51]</div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="mono text-[13px]">TraderLion</span>
+              <span class="mono text-[10px] text-muted-2">· last 2026-04-28</span>
+            </div>
+            <div class="flex items-center gap-3 mt-2">
+              <span class="mono text-[10px] text-muted">hit-rate (5d)</span>
+              <span class="mono text-[11px]">0.62</span>
+              <span class="ci">[0.51–0.79]</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <svg class="spark" width="60" height="16" viewBox="0 0 60 16">
+              <line x1="0" y1="8" x2="60" y2="8" stroke="#262626" stroke-width="1"/>
+              <polyline points="0,11 10,12 20,9 30,8 40,6 50,7 60,5" fill="none" stroke="#22C55E" stroke-width="1.2"/>
+              <circle cx="60" cy="5" r="1.6" fill="#22C55E"/>
+            </svg>
+            <span class="mono text-[12px] text-green">+0.20</span>
+          </div>
+        </div>
+
+        <!-- SMM -->
+        <div class="cov-row">
+          <div>
+            <div class="meta">[N_CALLS=2] [N_CLAIMS=4] [HR_LCI=0.42]</div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="mono text-[13px]">Stock Market Mentor</span>
+              <span class="mono text-[10px] text-muted-2">· last 2026-04-30</span>
+            </div>
+            <div class="flex items-center gap-3 mt-2">
+              <span class="mono text-[10px] text-muted">hit-rate (5d)</span>
+              <span class="mono text-[11px]">0.55</span>
+              <span class="ci">[0.42–0.71]</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <svg class="spark" width="60" height="16" viewBox="0 0 60 16">
+              <line x1="0" y1="8" x2="60" y2="8" stroke="#262626" stroke-width="1"/>
+              <polyline points="0,9 10,7 20,6 30,5 40,4 50,3 60,2" fill="none" stroke="#22C55E" stroke-width="1.2"/>
+              <circle cx="60" cy="2" r="1.6" fill="#22C55E"/>
+            </svg>
+            <span class="mono text-[12px] text-green">+0.40</span>
+          </div>
+        </div>
+
+        <!-- BoWS -->
+        <div class="cov-row">
+          <div>
+            <div class="meta">[N_CALLS=1] [N_CLAIMS=2] [HR_LCI=0.38]</div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="mono text-[13px]">Bulls on Wall Street</span>
+              <span class="mono text-[10px] text-muted-2">· last 2026-04-22</span>
+            </div>
+            <div class="flex items-center gap-3 mt-2">
+              <span class="mono text-[10px] text-muted">hit-rate (5d)</span>
+              <span class="mono text-[11px]">0.54</span>
+              <span class="ci">[0.38–0.69]</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <svg class="spark" width="60" height="16" viewBox="0 0 60 16">
+              <line x1="0" y1="8" x2="60" y2="8" stroke="#262626" stroke-width="1"/>
+              <polyline points="0,8 12,7 24,5 36,4 48,5 60,3" fill="none" stroke="#22C55E" stroke-width="1.2"/>
+              <circle cx="60" cy="3" r="1.6" fill="#22C55E"/>
+            </svg>
+            <span class="mono text-[12px] text-green">+0.50</span>
+          </div>
+        </div>
+
+        <!-- Adam Mancini (uncalibrated) -->
+        <div class="cov-row">
+          <div>
+            <div class="meta">[N_CALLS=0] [N_CLAIMS=1] [HR_LCI=N/A]</div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="mono text-[13px]">Adam Mancini</span>
+              <span class="mono text-[10px] text-muted-2">· last 2026-04-15</span>
+            </div>
+            <div class="flex items-center gap-3 mt-2">
+              <span class="badge amber">uncalibrated · N&lt;5</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <svg class="spark" width="60" height="16" viewBox="0 0 60 16">
+              <line x1="0" y1="8" x2="60" y2="8" stroke="#262626" stroke-width="1"/>
+              <polyline points="60,8" fill="none" stroke="#71717A" stroke-width="1.2" stroke-dasharray="2,2"/>
+              <circle cx="60" cy="8" r="1.6" fill="#71717A"/>
+            </svg>
+            <span class="mono text-[12px] text-muted">±0.00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. NOTES & TAGS -->
+      <div class="panel">
+        <div style="padding: 12px 14px; border-bottom: 1px solid var(--hairline-2);">
+          <div class="label-xs meta-bright">Notes &amp; manual review</div>
+          <div class="meta mt-0.5">[ANNOTATIONS] [TAGS:6] [LOCAL_ONLY · NOT_SHARED]</div>
+        </div>
+        <div style="padding: 12px 14px;">
+          <textarea class="notes" rows="6">// 2026-05-04 — SMM cup-and-handle thesis worth tracking through earnings
+//   confirmed by BoWS pre-order catalyst on 2026-04-22, but TraderLion
+//   flagged 230 break risk on 04-28. Asymmetric setup — wait for break
+//   above 240 with vol > 60M before considering exposure.
+// 2026-05-05 — earnings 2026-05-08 AMC; revisit signals post-print<span class="cursor"></span></textarea>
+          <div class="mt-3">
+            <div class="meta mb-2">[TAG_CHIPS]</div>
+            <span class="chip active">earnings-watch</span>
+            <span class="chip">cup-and-handle</span>
+            <span class="chip active">smm-thesis</span>
+            <span class="chip">230-line</span>
+            <span class="chip">supply-chain</span>
+            <span class="chip">pre-earnings</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ============== 8. METHODOLOGY / DATA-STATE FOOTER ============== -->
+  <section id="methodology" class="panel mt-4" style="padding: 22px 24px;">
+    <div class="flex items-baseline justify-between mb-4" style="border-bottom: 1px solid var(--hairline-2); padding-bottom: 12px;">
+      <div>
+        <div class="label-xs meta-bright">Methodology &amp; data state</div>
+        <div class="meta mt-0.5">[FOOTER] [TICKER:AAPL] [PIPELINE_VERSION:0.1.4] [DOCS_DIR:src/app/]</div>
+      </div>
+      <div class="meta">decision support, not advice — research/educational only · see disclaimer</div>
+    </div>
+
+    <div class="grid" style="grid-template-columns: 1fr 1.2fr 1fr; gap: 32px;">
+
+      <!-- LEFT: pipeline state -->
+      <div>
+        <div class="label-xs meta-bright mb-3">// pipeline state</div>
+        <div class="flex flex-col gap-2 mono text-[11px] text-muted">
+          <div>[LAST_EXTRACTOR_RUN: <span class="meta-bright">2026-05-04 23:47 UTC</span>]</div>
+          <div>[LAST_AGGREGATE_SIGNALS: <span class="meta-bright">2026-05-05 06:30 UTC</span>]</div>
+          <div>[LAST_BACKTEST: <span class="meta-bright">2026-05-05 06:33 UTC</span>]</div>
+          <div>[LAST_PRICE_FETCH: <span class="meta-bright">2026-05-05 14:32 UTC</span>]</div>
+          <hr class="h-rule my-1"/>
+          <div>[N_DOCS_THIS_TICKER: <span class="meta-bright">8</span>]</div>
+          <div>[N_CLAIMS: <span class="meta-bright">11</span>]</div>
+          <div>[N_CALLS: <span class="meta-bright">4</span>]</div>
+          <div>[N_CREATORS_COVERED: <span class="meta-bright">5</span>]</div>
+          <div>[N_TICKERSIGNAL_ROWS: <span class="meta-bright">6</span>]</div>
+          <hr class="h-rule my-1"/>
+          <div>[EXTRACTOR_VERSION: <span class="meta-bright">v0.1</span>]</div>
+          <div>[GOLD_SET_F1: <span class="meta-bright">0.81</span>]</div>
+          <div>[CALENDAR: <span class="meta-bright">XNYS</span>] [TZ_STORE: <span class="meta-bright">UTC</span>]</div>
+        </div>
+      </div>
+
+      <!-- CENTER: definitions -->
+      <div>
+        <div class="label-xs meta-bright mb-3">// definitions</div>
+        <div class="flex flex-col gap-3 mono text-[11px] text-muted leading-relaxed">
+          <div><span class="meta-bright">claims_all</span> &mdash; every extracted Claim on this ticker, summed with creator-credibility weights. Captures the broadest signal including opinions and conditional statements.</div>
+          <div><span class="meta-bright">claims_factual</span> &mdash; subset of Claims marked <code class="text-cyan">class=factual</code> (verifiable assertions: levels, catalysts, data points). Excludes opinions and conditionals. Lower N, higher signal-to-noise.</div>
+          <div><span class="meta-bright">creator_consensus</span> &mdash; per-creator polarity averaged then weighted. Limits one loud creator's effect — each creator counts once per window regardless of mention count.</div>
+          <div><span class="meta-bright">credibility_weighted_polarity</span> &mdash; <code class="text-cyan">Σ(polarity · cred_weight) / Σ(cred_weight)</code>; cred_weight derives from each creator's hit-rate Wilson lower bound (5d horizon).</div>
+          <div><span class="meta-bright">Wilson 95% CI</span> &mdash; binomial proportion confidence interval; renders as <code class="text-cyan">0.62 [0.51–0.79]</code>. Low-CI floor is what we trust, not point estimate.</div>
+          <div><span class="meta-bright">5d return</span> &mdash; close-to-close return at 5 trading days from activation, net of 10 bps round-trip. Conditional on activation per ADR-0003.</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: ADR links -->
+      <div>
+        <div class="label-xs meta-bright mb-3">// design decisions &amp; references</div>
+        <div class="flex flex-col">
+          <a class="adr-link" href="docs/decisions/0005-product-pivot-decision-support.md">→ ADR-0005 · Product pivot to decision-support</a>
+          <a class="adr-link" href="docs/decisions/0006-claims-and-ticker-signals.md">→ ADR-0006 · Claims and ticker signals</a>
+          <a class="adr-link" href="docs/decisions/0003-backtest-assumptions.md">→ ADR-0003 · Backtest assumptions (per-call)</a>
+          <a class="adr-link" href="docs/decisions/0007-strategies-and-walkforward.md">→ ADR-0007 · Strategies and walk-forward</a>
+          <a class="adr-link" href="docs/decisions/0002-extraction-hybrid.md">→ ADR-0002 · Hybrid extraction (evidence-quote requirement)</a>
+          <a class="adr-link" href="docs/decisions/0001-source-abstraction.md">→ ADR-0001 · Source abstraction</a>
+          <hr class="h-rule my-2"/>
+          <a class="adr-link" href="docs/disclaimer.md">→ Disclaimer (research only, not investment advice)</a>
+          <a class="adr-link" href="docs/architecture.md">→ docs/architecture.md</a>
+          <a class="adr-link" href="README.md">→ README.md</a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FULL-WIDTH LOW-N WARNING BANNER (styled-inactive demo) -->
+    <div class="mt-6">
+      <div class="meta mb-2">// low-N warning banner — production treatment, suppressed in this render</div>
+      <div class="demo-hatch" style="border: 4px solid var(--amber); background: #141414; padding: 22px 26px; position: relative;">
+        <!-- demo corner stamp -->
+        <div style="position: absolute; top: 8px; right: 12px;" class="meta">
+          <span class="text-amber">[DEMO_RENDER]</span> [INACTIVE_STATE]
+        </div>
+        <div class="mono" style="font-size: 23px; font-weight: 700; letter-spacing: 0.04em; color: var(--amber); line-height: 1.25;">
+          LOW-N WARNING — TREAT AS SUGGESTIVE, NOT ACTIONABLE — TOTAL MENTIONS BELOW THRESHOLD
+        </div>
+        <div class="mono mt-2" style="font-size: 12px; color: var(--muted); letter-spacing: 0.04em;">
+          [N=15 · ABOVE THRESHOLD · BANNER SUPPRESSED IN PRODUCTION]
+        </div>
+        <div class="mono mt-1" style="font-size: 10.5px; color: var(--muted-2);">
+          // production trigger: total claim N &lt; 10 in active window OR fewer than 3 distinct creators OR most-recent mention &gt; 90d ago.
+          // when active, banner sits above the live-signal strip and dims tile values to muted-grey until reviewed.
+        </div>
+      </div>
+    </div>
+
+    <!-- bottom strip -->
+    <div class="mt-6 pt-4 flex items-center justify-between" style="border-top: 1px solid var(--hairline-2);">
+      <div class="meta">
+        trading-signal-research · v0.1.4 · ticker view ·
+        <span class="text-muted-2">renderer:_design/composite/index.html → apps/web/src/app/tickers/[ticker]/page.tsx (port-target)</span>
+      </div>
+      <div class="meta">
+        [BUILD:composite_v1] [GENERATED:2026-05-05] [DATA_AS_OF:2026-05-05 14:32 UTC]
+      </div>
+    </div>
+  </section>
+
+</main>
+
+</body>
+</html>

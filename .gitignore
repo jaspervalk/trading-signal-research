@@ -55,3 +55,11 @@ CLAUDE.md
 node_modules/
 .next/
 out/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+TradingAgents/

@@ -754,3 +754,199 @@ class GoldLabel(Base):
 
     def __repr__(self) -> str:
         return f"<GoldLabel {self.source_key} call={self.expected_is_call} ticker={self.expected_ticker}>"
+
+
+# --- Phase F: Strategy walk-forward results (ADR 0007) --------------------
+
+# Persisted output of one `run_walkforward` invocation. Idempotent on
+# (strategy_name, strategy_version, config_hash); a re-run with the same
+# inputs replaces the row in place. Trades, equity curve, and sanity-check
+# results are stored as JSON blobs to keep the schema simple — they're for
+# review-replay, not for joins. The dashboard's "Backtest explorer" panel
+# (planned in docs/architecture.md) reads from these rows.
+
+class WalkForwardResultRow(Base):
+    __tablename__ = "walkforward_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "strategy_name", "strategy_version", "config_hash",
+            name="uq_walkforward_natural_key",
+        ),
+        Index("ix_walkforward_strategy", "strategy_name", "strategy_version"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    strategy_name: Mapped[str] = mapped_column(String(64))
+    strategy_version: Mapped[str] = mapped_column(String(32))
+    config_hash: Mapped[str] = mapped_column(String(32))
+
+    # Wall-clock window
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rebalance_mode: Mapped[str] = mapped_column(String(16))
+    cost_bps: Mapped[int] = mapped_column(Integer, default=10)
+    benchmark_ticker: Mapped[str] = mapped_column(String(16), default="SPY")
+
+    # Headline metrics (so the dashboard can sort + filter without parsing JSON)
+    n_rebalances: Mapped[int] = mapped_column(Integer, default=0)
+    n_trades: Mapped[int] = mapped_column(Integer, default=0)
+    underpowered: Mapped[bool] = mapped_column(default=False)
+
+    cagr: Mapped[float | None] = mapped_column(Float)
+    sharpe: Mapped[float | None] = mapped_column(Float)
+    max_drawdown: Mapped[float | None] = mapped_column(Float)
+    annualized_vol: Mapped[float | None] = mapped_column(Float)
+    hit_rate: Mapped[float | None] = mapped_column(Float)
+    hit_rate_lower_ci: Mapped[float | None] = mapped_column(Float)
+    hit_rate_upper_ci: Mapped[float | None] = mapped_column(Float)
+    benchmark_cagr: Mapped[float | None] = mapped_column(Float)
+    excess_cagr: Mapped[float | None] = mapped_column(Float)
+    avg_holding_days: Mapped[float | None] = mapped_column(Float)
+    win_loss_ratio: Mapped[float | None] = mapped_column(Float)
+    turnover: Mapped[float | None] = mapped_column(Float)
+
+    # Detail blobs (JSON text)
+    metrics_json: Mapped[str] = mapped_column(Text, default="{}")
+    trades_json: Mapped[str] = mapped_column(Text, default="[]")
+    equity_curve_json: Mapped[str] = mapped_column(Text, default="[]")
+    sanity_checks_json: Mapped[str] = mapped_column(Text, default="[]")
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    config_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    # Calibration (filled later by F-9 calibration computation if applicable)
+    brier_score: Mapped[float | None] = mapped_column(Float)
+    reliability_json: Mapped[str | None] = mapped_column(Text)
+
+    # Provenance
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<WalkForwardResultRow {self.strategy_name}@{self.strategy_version} "
+            f"cagr={self.cagr} sharpe={self.sharpe} "
+            f"n_trades={self.n_trades} underpowered={self.underpowered}>"
+        )
+
+
+# --- Phase G: Research snapshots --------------------------------------------
+#
+# A `ResearchSnapshot` is a tiny row written every time the `/research` API
+# (or `tsr research` CLI) runs for a ticker. Captures the *headline* of the
+# `TickerResearchView` — status, setup, key levels, transcript signal —
+# plus a timestamp. Lets us answer "how did AAPL's setup evolve over the
+# last 30 days?" without re-running history.
+#
+# Storage cost is small: ~30 numeric/string columns, no JSON blobs. Roughly
+# 1KB per row. At one snapshot per ticker per dashboard view, this stays
+# under a few MB indefinitely.
+#
+# NOT a replacement for the strategy-level walk-forward harness. Snapshots
+# are personal-research metadata; walk-forward is statistical evaluation.
+
+class ResearchSnapshot(Base):
+    __tablename__ = "research_snapshots"
+    __table_args__ = (
+        Index("ix_research_snapshot_ticker_time", "ticker", "as_of"),
+        Index("ix_research_snapshot_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    ticker: Mapped[str] = mapped_column(String(16))
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    # Headline classification (mirrors src/app/analysis/schema.py enums)
+    status: Mapped[str] = mapped_column(String(32))
+    status_confidence: Mapped[str] = mapped_column(String(8))
+    setup_type: Mapped[str] = mapped_column(String(32))
+    setup_confidence: Mapped[str] = mapped_column(String(8))
+    primary_style: Mapped[str | None] = mapped_column(String(40))
+
+    # Headline market context
+    last_close: Mapped[float | None] = mapped_column(Float)
+    pct_off_52w_high: Mapped[float | None] = mapped_column(Float)
+    return_5d: Mapped[float | None] = mapped_column(Float)
+    return_21d: Mapped[float | None] = mapped_column(Float)
+    return_63d: Mapped[float | None] = mapped_column(Float)
+
+    # Headline indicators
+    ma_alignment: Mapped[str] = mapped_column(String(20))
+    rsi_14: Mapped[float | None] = mapped_column(Float)
+    atr_14_pct: Mapped[float | None] = mapped_column(Float)
+    sma_50_slope_21d_pct: Mapped[float | None] = mapped_column(Float)
+    relative_strength_vs_spy_63d: Mapped[float | None] = mapped_column(Float)
+
+    # Levels we care about for entry-zone tracking
+    nearest_support: Mapped[float | None] = mapped_column(Float)
+    nearest_resistance: Mapped[float | None] = mapped_column(Float)
+    pullback_pct_from_recent_high: Mapped[float | None] = mapped_column(Float)
+    breakout_distance_pct: Mapped[float | None] = mapped_column(Float)
+
+    # Entry zone (when available)
+    entry_zone_available: Mapped[bool] = mapped_column(default=False)
+    entry_trigger: Mapped[float | None] = mapped_column(Float)
+    entry_zone_low: Mapped[float | None] = mapped_column(Float)
+    entry_zone_high: Mapped[float | None] = mapped_column(Float)
+    invalidation_reference: Mapped[float | None] = mapped_column(Float)
+    risk_reward_estimate: Mapped[float | None] = mapped_column(Float)
+
+    # Transcript-side context
+    transcript_n_calls: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_n_claims: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_n_creators: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_polarity_30d: Mapped[float | None] = mapped_column(Float)
+    transcript_coverage_status: Mapped[str | None] = mapped_column(String(20))
+    transcript_confirms: Mapped[str | None] = mapped_column(String(16))
+
+    # Provenance — snapshots are append-only; we keep all of them for a
+    # ticker so the dashboard can render an evolution timeline.
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ResearchSnapshot {self.ticker} {self.status}/{self.setup_type} "
+            f"at={self.as_of:%Y-%m-%d}>"
+        )
+
+
+class ResearchPlan(Base):
+    """Cached entry/exit research plan (see docs/entry-exit-research-plan.md).
+
+    One row per (ticker, mode, day). The full plan is stored as JSON Text so
+    the schema can evolve without migration churn — querying never goes
+    inside the JSON, only by the indexed fields.
+    """
+
+    __tablename__ = "research_plans"
+    __table_args__ = (
+        Index("ix_research_plan_ticker_mode_day", "ticker", "mode", "day_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), index=True)
+    mode: Mapped[str] = mapped_column(String(8))  # 'quick' | 'deep'
+    day_key: Mapped[str] = mapped_column(String(10))  # 'YYYY-MM-DD' UTC
+
+    # Headline fields, denormalised for cheap UI listing without parsing JSON.
+    confidence: Mapped[str] = mapped_column(String(8))
+    timeframe: Mapped[str] = mapped_column(String(8))
+    cost_usd: Mapped[float] = mapped_column(Float)
+    duration_ms: Mapped[int] = mapped_column(Integer)
+
+    # The full EntryExitPlan as JSON. SQLite doesn't have a native JSON type;
+    # Text + json.loads in the read path is plenty for this volume.
+    plan_json: Mapped[str] = mapped_column(Text)
+
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.utcnow()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ResearchPlan {self.ticker} {self.mode} day={self.day_key} "
+            f"conf={self.confidence} ${self.cost_usd:.4f}>"
+        )

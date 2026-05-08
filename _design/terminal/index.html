@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>AAPL — TSR Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg:        #0A0A0A;
+    --panel:    #141414;
+    --panel-2:  #181818;
+    --text:     #FAFAFA;
+    --muted:    #A1A1AA;
+    --dim:      #71717A;
+    --hair:     #262626;
+    --hair-2:   #1f1f1f;
+    --green:    #22C55E;
+    --red:      #EF4444;
+    --amber:    #F59E0B;
+    --cyan:     #22D3EE;
+  }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-feature-settings: "tnum" 1, "ss01" 1, "zero" 1;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    line-height: 1.35;
+  }
+  /* Type scale */
+  .t-10 { font-size: 10px; line-height: 1.3; letter-spacing: 0.08em; }
+  .t-11 { font-size: 11px; line-height: 1.3; }
+  .t-12 { font-size: 12px; line-height: 1.35; }
+  .t-14 { font-size: 14px; line-height: 1.4; }
+  .t-24 { font-size: 24px; line-height: 1.15; }
+  .t-40 { font-size: 40px; line-height: 1.05; }
+
+  .num   { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "zero" 1; }
+  .ucase { text-transform: uppercase; letter-spacing: 0.12em; }
+  .label { color: var(--muted); }
+  .dim   { color: var(--dim); }
+
+  /* Panel & hairlines */
+  .panel { background: var(--panel); border: 1px solid var(--hair); }
+  .hair  { border-color: var(--hair); }
+  .hair-b { border-bottom: 1px solid var(--hair); }
+  .hair-t { border-top: 1px solid var(--hair); }
+  .hair-r { border-right: 1px solid var(--hair); }
+  .hair-l { border-left: 1px solid var(--hair); }
+
+  /* Color tokens */
+  .c-green { color: var(--green); }
+  .c-red   { color: var(--red); }
+  .c-amber { color: var(--amber); }
+  .c-cyan  { color: var(--cyan); }
+  .c-muted { color: var(--muted); }
+  .c-dim   { color: var(--dim); }
+  .bg-panel { background: var(--panel); }
+  .bg-panel-2 { background: var(--panel-2); }
+
+  /* Status & class badges — hollow, 1px, mono uppercase */
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 1px 6px; border: 1px solid currentColor;
+    font-size: 10px; line-height: 1.4; letter-spacing: 0.1em;
+    text-transform: uppercase; font-weight: 500;
+    border-radius: 0;
+  }
+  .badge-green  { color: var(--green); }
+  .badge-red    { color: var(--red); }
+  .badge-amber  { color: var(--amber); }
+  .badge-cyan   { color: var(--cyan); }
+  .badge-muted  { color: var(--muted); }
+
+  /* Polarity micro-bar */
+  .polbar {
+    position: relative;
+    width: 100%; height: 6px;
+    background: transparent;
+    border-top: 1px solid var(--hair);
+    border-bottom: 1px solid var(--hair);
+  }
+  .polbar::before {
+    /* center zero tick */
+    content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px;
+    width: 1px; background: var(--hair);
+  }
+  .polbar .track {
+    position: absolute; left: 0; right: 0; top: 50%;
+    height: 1px; background: var(--hair);
+    transform: translateY(-50%);
+  }
+  .polbar .marker {
+    position: absolute; top: 50%; width: 8px; height: 8px;
+    transform: translate(-50%, -50%);
+    border: 1px solid currentColor;
+    background: var(--bg);
+  }
+
+  /* Tile */
+  .tile {
+    border: 1px solid var(--hair);
+    background: var(--panel);
+    padding: 10px 12px 12px 12px;
+    min-width: 0;
+  }
+  .tile:hover { border-color: #2f2f2f; }
+
+  /* Table */
+  table.term { width: 100%; border-collapse: collapse; }
+  table.term th {
+    text-align: left; font-weight: 500;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--hair);
+    background: var(--panel);
+    white-space: nowrap;
+  }
+  table.term td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--hair-2);
+    font-size: 12px;
+    vertical-align: top;
+  }
+  table.term tr:last-child td { border-bottom: 0; }
+  table.term tr:hover td { background: #101010; }
+
+  /* Disclosure for evidence */
+  details.evidence > summary {
+    list-style: none; cursor: pointer;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  details.evidence > summary::-webkit-details-marker { display: none; }
+  details.evidence > summary::before {
+    content: "▸"; display: inline-block; width: 10px; color: var(--dim);
+    transition: transform 120ms;
+  }
+  details.evidence[open] > summary::before { content: "▾"; color: var(--cyan); }
+  details.evidence blockquote {
+    margin: 6px 0 0 14px;
+    padding: 6px 10px;
+    border-left: 1px solid var(--cyan);
+    background: #0d0d0d;
+    color: var(--text);
+    font-size: 11px;
+  }
+
+  /* Watchlist star button */
+  .star-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-size: 14px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .star-btn[aria-pressed="true"] { background: rgba(245, 158, 11, 0.08); }
+
+  /* Methodology link */
+  a.term-link { color: var(--cyan); text-decoration: none; border-bottom: 1px dashed rgba(34, 211, 238, 0.4); }
+  a.term-link:hover { border-bottom-style: solid; }
+
+  /* Inactive low-N banner */
+  .lown-banner {
+    border: 1px dashed var(--amber);
+    background: repeating-linear-gradient(
+      135deg,
+      rgba(245, 158, 11, 0.04) 0 8px,
+      transparent 8px 16px
+    );
+    color: var(--amber);
+    padding: 10px 12px;
+  }
+
+  /* CI bracket */
+  .ci { color: var(--muted); }
+
+  /* Sparkline container baseline */
+  .spark { display: inline-block; vertical-align: middle; }
+
+  /* Tag chips */
+  .chip {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    background: var(--panel-2);
+  }
+  .chip.cyan { color: var(--cyan); border-color: rgba(34,211,238,0.4); }
+
+  textarea.term {
+    width: 100%;
+    background: #0c0c0c;
+    border: 1px solid var(--hair);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 10px;
+    resize: vertical;
+    outline: none;
+  }
+  textarea.term:focus { border-color: var(--cyan); }
+
+  /* Chart axis text */
+  .axis-text { fill: var(--muted); font-size: 10px; letter-spacing: 0.08em; font-family: 'JetBrains Mono', monospace; }
+  .axis-line { stroke: var(--hair); stroke-width: 1; }
+  .grid-line { stroke: var(--hair-2); stroke-width: 1; stroke-dasharray: 2 3; }
+
+  /* Header sticky */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg);
+    border-bottom: 1px solid var(--hair);
+  }
+
+  /* Eyebrow row above panel title */
+  .eyebrow {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--hair);
+    color: var(--muted); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .eyebrow .right { color: var(--dim); }
+
+  /* Subtle scrollbar (webkit) */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #1c1c1c; border: 1px solid var(--hair); }
+  ::-webkit-scrollbar-thumb:hover { background: #262626; }
+
+  /* Design notes block — visually de-emphasized meta panel */
+  #design-notes {
+    border: 1px dashed #3a3a3a;
+    background: #0c0c0c;
+    color: #c4c4c4;
+    padding: 12px 16px;
+    margin: 16px;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  #design-notes h2 {
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--amber); margin-bottom: 6px;
+  }
+  #design-notes ul { margin: 4px 0 6px 18px; }
+  #design-notes li { margin-bottom: 2px; }
+  #design-notes .group-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; }
+
+  /* Responsive collapse */
+  @media (max-width: 1279px) {
+    .grid-3col { grid-template-columns: 1fr !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ====================== JUNIOR-DESIGNER PASS HEADER ====================== -->
+<aside id="design-notes" aria-label="Junior designer pass notes">
+  <h2>// Junior designer pass — meta-comment, not part of the design</h2>
+  <div><span class="group-label">Assumptions:</span></div>
+  <ul>
+    <li>Treated <em>credibility-weighted polarity</em> as the headline number on each tile (24px) and raw <em>net polarity</em> as the secondary read — credibility is the whole point of the project.</li>
+    <li>Assumed Wilson-95 CIs are always shown alongside any rate metric, even when N is small; the bracket itself is the warning, not just the banner.</li>
+    <li>Assumed the user reads top-to-bottom, left-to-right: header, then signal strip, then chart with markers, then evidence. Right rail is reference material.</li>
+  </ul>
+  <div><span class="group-label">Decisions &amp; reasoning:</span></div>
+  <ul>
+    <li>Chose a 4-5-3 column split (not 3-6-3) — the chart wants horizontal room, and the 6 signal tiles work better as a 3×2 grid spanning the left rail width than stacked.</li>
+    <li>Evidence quotes default <em>open</em> on the first 2 rows, collapsible on the rest — first impression should show the project's raison d'être (verbatim quotes), but a 5-row table all-open would dominate the fold.</li>
+    <li>Polarity micro-bar uses a hollow square marker, not a filled dot — keeps data-ink ratio high and matches the "no fills" rule on badges. The center tick is the zero reference.</li>
+  </ul>
+  <div><span class="group-label">Open tradeoffs / to decide:</span></div>
+  <ul>
+    <li>Sparklines are currently cyan (info color). Considered coloring them by sign of last value (green/red), but mixed signs in the same column would make the table visually noisy. Flag for review.</li>
+    <li>The "Historical only" header slot is reserved but not rendered (most-recent mention is 5 days old). Slot is the empty space right of the price block — consider whether it should always render as a placeholder for layout stability.</li>
+    <li>Low-N banner shown as inactive example in the methodology footer per spec, but real placement would be above the signal strip — should it also reserve vertical space when inactive? Currently it does not, to avoid wasted real estate.</li>
+  </ul>
+  <div><span class="group-label">Reference inspiration:</span></div>
+  <ul>
+    <li>Tile typography references Bloomberg's <code>TKR &lt;GO&gt;</code> / <code>RV &lt;GO&gt;</code> functions; chart axis style + sparkline density references Tufte's small multiples and Cleveland's dot plots; hairline grid + hollow badges reference FactSet workstation chrome.</li>
+  </ul>
+</aside>
+
+<!-- ====================== TOP BAR (1) HEADER STRIP ====================== -->
+<header class="topbar">
+  <div class="max-w-[1440px] mx-auto px-6 py-3 flex items-center gap-6">
+    <!-- Left: brand + ticker -->
+    <div class="flex items-baseline gap-4 min-w-0">
+      <span class="t-10 ucase c-dim">TSR // Terminal</span>
+      <span class="t-10 ucase c-muted">/ Ticker</span>
+    </div>
+
+    <!-- Center: ticker block -->
+    <div class="flex items-end gap-6 ml-2">
+      <div class="leading-none">
+        <div class="t-10 ucase c-muted mb-1">US Equity · NASDAQ</div>
+        <div class="t-40 num font-medium tracking-tight">AAPL</div>
+      </div>
+      <div class="leading-none pb-1">
+        <div class="t-10 ucase c-muted mb-1">Last</div>
+        <div class="flex items-baseline gap-3">
+          <span class="t-24 num">238.45</span>
+          <span class="t-12 num c-green">+1.94</span>
+          <span class="t-12 num c-green">+0.82%</span>
+        </div>
+        <div class="t-10 c-dim mt-1 num">15:22:08 ET · DLY 1H BARS</div>
+      </div>
+      <!-- Reserved slot for "Historical only" badge (not rendered — most recent mention is 5d old) -->
+      <div class="leading-none pb-1" aria-hidden="true" style="min-width: 120px;">
+        <!-- header has slot for HISTORICAL ONLY badge if max(claim.posted_at) < today - 90d -->
+      </div>
+    </div>
+
+    <!-- Right: actions -->
+    <div class="ml-auto flex items-center gap-4">
+      <a href="#methodology" class="term-link t-11">Decision support, not advice — see methodology</a>
+      <button class="star-btn" aria-pressed="true" title="On watchlist">★</button>
+    </div>
+  </div>
+
+  <!-- Sub-nav strip (purely decorative chrome — locates this view in the app) -->
+  <div class="max-w-[1440px] mx-auto px-6 pb-2 flex items-center gap-5 t-10 ucase">
+    <span class="c-cyan" style="border-bottom: 1px solid var(--cyan); padding-bottom: 4px;">Overview</span>
+    <span class="c-muted">Calls</span>
+    <span class="c-muted">Claims</span>
+    <span class="c-muted">Creators</span>
+    <span class="c-muted">Backtest</span>
+    <span class="ml-auto c-dim num">F1 OVERVIEW · F2 CALLS · F3 CLAIMS · F4 CREATORS</span>
+  </div>
+</header>
+
+<!-- ====================== MAIN GRID ====================== -->
+<main class="max-w-[1440px] mx-auto px-6 py-6">
+  <!-- 4-5-3 split for desktop -->
+  <div class="grid-3col grid gap-4" style="grid-template-columns: 4fr 5fr 3fr;">
+
+    <!-- =================================================== -->
+    <!-- LEFT RAIL: header summary recap + signal strip       -->
+    <!-- =================================================== -->
+    <section class="flex flex-col gap-4 min-w-0">
+
+      <!-- Quick stats panel -->
+      <div class="panel">
+        <div class="eyebrow">
+          <span>Coverage Summary</span>
+          <span class="right num">15 MENTIONS · 5 CREATORS · 30D</span>
+        </div>
+        <div class="grid grid-cols-3">
+          <div class="px-3 py-3 hair-r">
+            <div class="t-10 ucase c-muted">Mentions 30d</div>
+            <div class="t-24 num mt-1">15</div>
+            <div class="t-10 c-dim mt-1">11 claims · 4 calls</div>
+          </div>
+          <div class="px-3 py-3 hair-r">
+            <div class="t-10 ucase c-muted">Distinct creators</div>
+            <div class="t-24 num mt-1">5</div>
+            <div class="t-10 c-dim mt-1">of 14 tracked</div>
+          </div>
+          <div class="px-3 py-3">
+            <div class="t-10 ucase c-muted">Most recent</div>
+            <div class="t-14 num mt-2">2026-04-30</div>
+            <div class="t-10 c-dim mt-1">5d ago · live</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ (2) LIVE-SIGNAL STRIP — HERO ============ -->
+      <div class="panel" id="signal-strip">
+        <div class="eyebrow">
+          <span>Live Signal Strip · ticker_signal × window</span>
+          <span class="right">AS OF 2026-05-05 06:30 UTC</span>
+        </div>
+
+        <!-- Column header row: signal types -->
+        <div class="grid" style="grid-template-columns: 60px repeat(3, 1fr);">
+          <div></div>
+          <div class="t-10 ucase c-muted px-3 py-2 hair-b">Claims · all</div>
+          <div class="t-10 ucase c-muted px-3 py-2 hair-b hair-l">Claims · factual</div>
+          <div class="t-10 ucase c-muted px-3 py-2 hair-b hair-l">Creator consensus</div>
+        </div>
+
+        <!-- Row: 7d -->
+        <div class="grid" style="grid-template-columns: 60px repeat(3, 1fr);">
+          <div class="t-10 ucase c-muted flex items-center justify-center hair-r">7D</div>
+
+          <!-- Tile 7d × claims_all -->
+          <div class="tile">
+            <div class="flex items-baseline justify-between">
+              <span class="t-10 ucase c-muted">Net polarity</span>
+              <span class="t-10 num c-dim">N=4</span>
+            </div>
+            <div class="t-24 num c-green mt-1">+0.50</div>
+            <div class="polbar mt-2 c-green"><div class="track"></div><div class="marker" style="left:75%;"></div></div>
+            <div class="grid grid-cols-2 mt-3 gap-y-1">
+              <span class="t-10 ucase c-muted">Creators</span><span class="t-10 num text-right">3</span>
+              <span class="t-10 ucase c-muted">Weighted</span><span class="t-10 num text-right c-green">+0.62</span>
+            </div>
+          </div>
+
+          <!-- Tile 7d × claims_factual -->
+          <div class="tile hair-l">
+            <div class="flex items-baseline justify-between">
+              <span class="t-10 ucase c-muted">Net polarity</span>
+              <span class="t-10 num c-dim">N=2</span>
+            </div>
+            <div class="t-24 num mt-1 c-muted">+0.00</div>
+            <div class="polbar mt-2 c-muted"><div class="track"></div><div class="marker" style="left:50%;"></div></div>
+            <div class="grid grid-cols-2 mt-3 gap-y-1">
+              <span class="t-10 ucase c-muted">Creators</span><span class="t-10 num text-right">2</span>
+              <span class="t-10 ucase c-muted">Weighted</span><span class="t-10 num text-right c-muted">+0.00</span>
+            </div>
+          </div>
+
+          <!-- Tile 7d × creator_consensus -->
+          <div class="tile hair-l">
+            <div class="flex items-baseline justify-between">
+              <span class="t-10 ucase c-muted">Net polarity</span>
+              <span class="t-10 num c-dim">N=4</span>
+            </div>
+            <div class="t-24 num c-green mt-1">+0.50</div>
+            <div class="polbar mt-2 c-green"><div class="track"></div><div class="marker" style="left:75%;"></div></div>
+            <div class="grid grid-cols-2 mt-3 gap-y-1">
+              <span class="t-10 ucase c-muted">Creators</span><span class="t-10 num text-right">3</span>
+              <span class="t-10 ucase c-muted">Weighted</span><span class="t-10 num text-right c-green">+0.62</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row: 30d -->
+        <div class="grid hair-t" style="grid-template-columns: 60px repeat(3, 1fr);">
+          <div class="t-10 ucase c-muted flex items-center justify-center hair-r">30D</div>
+
+          <!-- Tile 30d × claims_all -->
+          <div class="tile">
+            <div class="flex items-baseline justify-between">
+              <span class="t-10 ucase c-muted">Net polarity</span>
+              <span class="t-10 num c-dim">N=11</span>
+            </div>
+            <div class="t-24 num c-green mt-1">+0.36</div>
+            <div class="polbar mt-2 c-green"><div class="track"></div><div class="marker" style="left:68%;"></div></div>
+            <div class="grid grid-cols-2 mt-3 gap-y-1">
+              <span class="t-10 ucase c-muted">Creators</span><span class="t-10 num text-right">5</span>
+              <span class="t-10 ucase c-muted">Weighted</span><span class="t-10 num text-right c-green">+0.48</span>
+            </div>
+          </div>
+
+          <!-- Tile 30d × claims_factual -->
+          <div class="tile hair-l">
+            <div class="flex items-baseline justify-between">
+              <span class="t-10 ucase c-muted">Net polarity</span>
+              <span class="t-10 num c-dim">N=4</span>
+            </div>
+            <div class="t-24 num c-green mt-1">+0.25</div>
+            <div class="polbar mt-2 c-green"><div class="track"></div><div class="marker" style="left:62.5%;"></div></div>
+            <div class="grid grid-cols-2 mt-3 gap-y-1">
+              <span class="t-10 ucase c-muted">Creators</span><span class="t-10 num text-right">3</span>
+              <span class="t-10 ucase c-muted">Weighted</span><span class="t-10 num text-right c-green">+0.30</span>
+            </div>
+          </div>
+
+          <!-- Tile 30d × creator_consensus -->
+          <div class="tile hair-l">
+            <div class="flex items-baseline justify-between">
+              <span class="t-10 ucase c-muted">Net polarity</span>
+              <span class="t-10 num c-dim">N=11</span>
+            </div>
+            <div class="t-24 num c-green mt-1">+0.36</div>
+            <div class="polbar mt-2 c-green"><div class="track"></div><div class="marker" style="left:68%;"></div></div>
+            <div class="grid grid-cols-2 mt-3 gap-y-1">
+              <span class="t-10 ucase c-muted">Creators</span><span class="t-10 num text-right">5</span>
+              <span class="t-10 ucase c-muted">Weighted</span><span class="t-10 num text-right c-green">+0.48</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="t-10 ucase c-dim px-3 py-2 hair-t">
+          Polarity scale −1.00 to +1.00 · weighted = credibility-weighted by creator hit_rate_lower_ci · empty state at N=0 renders "no signal"
+        </div>
+      </div>
+
+      <!-- ============ (7) NOTES & MANUAL REVIEW (left rail bottom) ============ -->
+      <div class="panel">
+        <div class="eyebrow">
+          <span>Notes &amp; Manual Review</span>
+          <span class="right">PRIVATE · NOT EXPORTED</span>
+        </div>
+        <div class="p-3">
+          <div class="t-10 ucase c-muted mb-2">Annotation</div>
+          <textarea class="term" rows="4" placeholder="// e.g. ' SMM and Bulls aligned on bullish thesis, TraderLion is the dissenter — watch 230 break trigger.'">SMM and Bulls aligned on bullish thesis, TraderLion is the dissenter — watch 230 break trigger. Earnings 2026-05-12 is the catalyst.</textarea>
+
+          <div class="t-10 ucase c-muted mt-3 mb-2">Tags</div>
+          <div class="flex flex-wrap gap-2">
+            <span class="chip cyan">EARNINGS-WATCH</span>
+            <span class="chip cyan">SETUP-CUP-HANDLE</span>
+            <span class="chip">MEGA-CAP</span>
+            <span class="chip">SECTOR-XLK</span>
+            <span class="chip" style="border-style: dashed;">+ ADD TAG</span>
+          </div>
+
+          <div class="flex items-center justify-between mt-4 t-10 ucase c-dim">
+            <span>Last edited 2026-05-04 09:12 UTC</span>
+            <span class="c-cyan">⌘S TO SAVE</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =================================================== -->
+    <!-- CENTER: chart + claims feed                         -->
+    <!-- =================================================== -->
+    <section class="flex flex-col gap-4 min-w-0">
+
+      <!-- ============ (3) PRICE CHART WITH OVERLAYS ============ -->
+      <div class="panel">
+        <div class="eyebrow">
+          <span>AAPL · Daily · 365D · Call markers overlaid</span>
+          <span class="right">
+            <span class="c-green">●</span> 5d positive &nbsp;
+            <span class="c-red">●</span> 5d negative &nbsp;
+            <span class="c-amber">●</span> pending
+          </span>
+        </div>
+
+        <div class="p-3">
+          <svg viewBox="0 0 720 280" width="100%" height="280" preserveAspectRatio="none" role="img" aria-label="AAPL daily candlestick chart, 365 days, with 4 call markers">
+            <!-- chart area: x in [50, 700], y in [20, 240]; price 220..260 -->
+            <!-- Grid lines (price) -->
+            <g>
+              <line class="grid-line" x1="50" y1="40"  x2="700" y2="40"/>
+              <line class="grid-line" x1="50" y1="80"  x2="700" y2="80"/>
+              <line class="grid-line" x1="50" y1="120" x2="700" y2="120"/>
+              <line class="grid-line" x1="50" y1="160" x2="700" y2="160"/>
+              <line class="grid-line" x1="50" y1="200" x2="700" y2="200"/>
+              <line class="grid-line" x1="50" y1="240" x2="700" y2="240"/>
+            </g>
+            <!-- Y axis labels (price 220..260, top=260, bottom=220) -->
+            <g class="axis-text" text-anchor="end">
+              <text x="44" y="44">260.00</text>
+              <text x="44" y="84">252.00</text>
+              <text x="44" y="124">244.00</text>
+              <text x="44" y="164">236.00</text>
+              <text x="44" y="204">228.00</text>
+              <text x="44" y="244">220.00</text>
+            </g>
+            <!-- Y axis line -->
+            <line class="axis-line" x1="50" y1="20" x2="50" y2="240"/>
+            <!-- X axis line -->
+            <line class="axis-line" x1="50" y1="240" x2="700" y2="240"/>
+
+            <!-- X axis quarterly ticks: Jul'25 (x=80), Oct'25 (x=240), Jan'26 (x=400), Apr'26 (x=580) -->
+            <g class="axis-text" text-anchor="middle">
+              <text x="80"  y="258">JUL '25</text>
+              <text x="240" y="258">OCT '25</text>
+              <text x="400" y="258">JAN '26</text>
+              <text x="580" y="258">APR '26</text>
+            </g>
+            <g>
+              <line class="axis-line" x1="80"  y1="240" x2="80"  y2="244"/>
+              <line class="axis-line" x1="240" y1="240" x2="240" y2="244"/>
+              <line class="axis-line" x1="400" y1="240" x2="400" y2="244"/>
+              <line class="axis-line" x1="580" y1="240" x2="580" y2="244"/>
+            </g>
+
+            <!-- Candles — drawn as ~80 thin bars across the 365d range. Stylized realistic uptrend with chop. -->
+            <!-- Format: x-center spaced by ~8px from x=58 to x=698 (80 candles).  -->
+            <!-- Up candles use --green stroke; down candles use --red stroke. Bodies 4px wide. -->
+            <g stroke-width="1">
+              <!-- Series: stylized uptrend from ~225 → ~238 with chop -->
+              <!-- Each candle: wickHigh, wickLow, bodyOpen, bodyClose, color -->
+              <!-- helper: y = 240 - ((p - 220) / 40) * 220   -->
+              <!-- For brevity, candles drawn as small <line> wicks + <rect> bodies hand-placed. -->
+
+              <!-- 1 -->
+              <line x1="58" y1="200" x2="58" y2="212" stroke="#22C55E"/>
+              <rect x="56" y="204" width="4" height="6" fill="none" stroke="#22C55E"/>
+              <!-- 2 -->
+              <line x1="66" y1="195" x2="66" y2="210" stroke="#EF4444"/>
+              <rect x="64" y="200" width="4" height="7" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 3 -->
+              <line x1="74" y1="198" x2="74" y2="214" stroke="#22C55E"/>
+              <rect x="72" y="202" width="4" height="9" fill="none" stroke="#22C55E"/>
+              <!-- 4 -->
+              <line x1="82" y1="194" x2="82" y2="208" stroke="#22C55E"/>
+              <rect x="80" y="198" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 5 -->
+              <line x1="90" y1="190" x2="90" y2="206" stroke="#EF4444"/>
+              <rect x="88" y="195" width="4" height="9" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 6 -->
+              <line x1="98" y1="188" x2="98" y2="204" stroke="#22C55E"/>
+              <rect x="96" y="192" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 7 -->
+              <line x1="106" y1="186" x2="106" y2="200" stroke="#22C55E"/>
+              <rect x="104" y="190" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 8 -->
+              <line x1="114" y1="184" x2="114" y2="198" stroke="#EF4444"/>
+              <rect x="112" y="188" width="4" height="8" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 9 -->
+              <line x1="122" y1="182" x2="122" y2="195" stroke="#EF4444"/>
+              <rect x="120" y="186" width="4" height="7" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 10 -->
+              <line x1="130" y1="180" x2="130" y2="194" stroke="#22C55E"/>
+              <rect x="128" y="184" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 11 -->
+              <line x1="138" y1="178" x2="138" y2="192" stroke="#22C55E"/>
+              <rect x="136" y="182" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 12 -->
+              <line x1="146" y1="180" x2="146" y2="196" stroke="#EF4444"/>
+              <rect x="144" y="184" width="4" height="10" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 13 -->
+              <line x1="154" y1="184" x2="154" y2="200" stroke="#EF4444"/>
+              <rect x="152" y="188" width="4" height="10" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 14 -->
+              <line x1="162" y1="180" x2="162" y2="198" stroke="#22C55E"/>
+              <rect x="160" y="184" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 15 -->
+              <line x1="170" y1="176" x2="170" y2="190" stroke="#22C55E"/>
+              <rect x="168" y="180" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 16 -->
+              <line x1="178" y1="172" x2="178" y2="186" stroke="#22C55E"/>
+              <rect x="176" y="176" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 17 -->
+              <line x1="186" y1="170" x2="186" y2="184" stroke="#EF4444"/>
+              <rect x="184" y="174" width="4" height="8" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 18 -->
+              <line x1="194" y1="168" x2="194" y2="182" stroke="#22C55E"/>
+              <rect x="192" y="172" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 19 -->
+              <line x1="202" y1="166" x2="202" y2="180" stroke="#22C55E"/>
+              <rect x="200" y="170" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 20 -->
+              <line x1="210" y1="170" x2="210" y2="186" stroke="#EF4444"/>
+              <rect x="208" y="174" width="4" height="10" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 21 -->
+              <line x1="218" y1="172" x2="218" y2="188" stroke="#EF4444"/>
+              <rect x="216" y="176" width="4" height="10" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 22 -->
+              <line x1="226" y1="170" x2="226" y2="184" stroke="#22C55E"/>
+              <rect x="224" y="174" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 23 -->
+              <line x1="234" y1="166" x2="234" y2="180" stroke="#22C55E"/>
+              <rect x="232" y="170" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 24 -->
+              <line x1="242" y1="160" x2="242" y2="176" stroke="#22C55E"/>
+              <rect x="240" y="164" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 25 -->
+              <line x1="250" y1="158" x2="250" y2="172" stroke="#EF4444"/>
+              <rect x="248" y="162" width="4" height="8" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 26 -->
+              <line x1="258" y1="156" x2="258" y2="170" stroke="#22C55E"/>
+              <rect x="256" y="160" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 27 -->
+              <line x1="266" y1="154" x2="266" y2="168" stroke="#22C55E"/>
+              <rect x="264" y="158" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 28 -->
+              <line x1="274" y1="150" x2="274" y2="164" stroke="#22C55E"/>
+              <rect x="272" y="154" width="4" height="8" fill="none" stroke="#22C55E"/>
+              <!-- 29 -->
+              <line x1="282" y1="152" x2="282" y2="170" stroke="#EF4444"/>
+              <rect x="280" y="156" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 30 -->
+              <line x1="290" y1="158" x2="290" y2="178" stroke="#EF4444"/>
+              <rect x="288" y="162" width="4" height="14" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 31 -->
+              <line x1="298" y1="160" x2="298" y2="180" stroke="#EF4444"/>
+              <rect x="296" y="164" width="4" height="14" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 32 -->
+              <line x1="306" y1="156" x2="306" y2="174" stroke="#22C55E"/>
+              <rect x="304" y="160" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 33 -->
+              <line x1="314" y1="150" x2="314" y2="168" stroke="#22C55E"/>
+              <rect x="312" y="154" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 34 -->
+              <line x1="322" y1="146" x2="322" y2="162" stroke="#22C55E"/>
+              <rect x="320" y="150" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 35 -->
+              <line x1="330" y1="142" x2="330" y2="158" stroke="#22C55E"/>
+              <rect x="328" y="146" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 36 -->
+              <line x1="338" y1="144" x2="338" y2="162" stroke="#EF4444"/>
+              <rect x="336" y="148" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 37 -->
+              <line x1="346" y1="146" x2="346" y2="164" stroke="#EF4444"/>
+              <rect x="344" y="150" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 38 -->
+              <line x1="354" y1="142" x2="354" y2="158" stroke="#22C55E"/>
+              <rect x="352" y="146" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 39 -->
+              <line x1="362" y1="138" x2="362" y2="154" stroke="#22C55E"/>
+              <rect x="360" y="142" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 40 -->
+              <line x1="370" y1="134" x2="370" y2="150" stroke="#22C55E"/>
+              <rect x="368" y="138" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 41 -->
+              <line x1="378" y1="132" x2="378" y2="148" stroke="#22C55E"/>
+              <rect x="376" y="136" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 42 -->
+              <line x1="386" y1="136" x2="386" y2="154" stroke="#EF4444"/>
+              <rect x="384" y="140" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 43 -->
+              <line x1="394" y1="138" x2="394" y2="158" stroke="#EF4444"/>
+              <rect x="392" y="142" width="4" height="14" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 44 -->
+              <line x1="402" y1="142" x2="402" y2="162" stroke="#EF4444"/>
+              <rect x="400" y="146" width="4" height="14" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 45 -->
+              <line x1="410" y1="138" x2="410" y2="156" stroke="#22C55E"/>
+              <rect x="408" y="142" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 46 -->
+              <line x1="418" y1="132" x2="418" y2="150" stroke="#22C55E"/>
+              <rect x="416" y="136" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 47 -->
+              <line x1="426" y1="128" x2="426" y2="144" stroke="#22C55E"/>
+              <rect x="424" y="132" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 48 -->
+              <line x1="434" y1="124" x2="434" y2="140" stroke="#22C55E"/>
+              <rect x="432" y="128" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 49 -->
+              <line x1="442" y1="120" x2="442" y2="136" stroke="#22C55E"/>
+              <rect x="440" y="124" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 50 -->
+              <line x1="450" y1="122" x2="450" y2="140" stroke="#EF4444"/>
+              <rect x="448" y="126" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 51 -->
+              <line x1="458" y1="124" x2="458" y2="142" stroke="#EF4444"/>
+              <rect x="456" y="128" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 52 -->
+              <line x1="466" y1="128" x2="466" y2="146" stroke="#EF4444"/>
+              <rect x="464" y="132" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 53 -->
+              <line x1="474" y1="130" x2="474" y2="148" stroke="#EF4444"/>
+              <rect x="472" y="134" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 54 -->
+              <line x1="482" y1="126" x2="482" y2="144" stroke="#22C55E"/>
+              <rect x="480" y="130" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 55 -->
+              <line x1="490" y1="120" x2="490" y2="138" stroke="#22C55E"/>
+              <rect x="488" y="124" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 56 -->
+              <line x1="498" y1="116" x2="498" y2="132" stroke="#22C55E"/>
+              <rect x="496" y="120" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 57 -->
+              <line x1="506" y1="112" x2="506" y2="128" stroke="#22C55E"/>
+              <rect x="504" y="116" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 58 -->
+              <line x1="514" y1="110" x2="514" y2="126" stroke="#22C55E"/>
+              <rect x="512" y="114" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 59 -->
+              <line x1="522" y1="114" x2="522" y2="132" stroke="#EF4444"/>
+              <rect x="520" y="118" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 60 -->
+              <line x1="530" y1="116" x2="530" y2="134" stroke="#EF4444"/>
+              <rect x="528" y="120" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 61 -->
+              <line x1="538" y1="112" x2="538" y2="128" stroke="#22C55E"/>
+              <rect x="536" y="116" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 62 -->
+              <line x1="546" y1="108" x2="546" y2="124" stroke="#22C55E"/>
+              <rect x="544" y="112" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 63 -->
+              <line x1="554" y1="104" x2="554" y2="120" stroke="#22C55E"/>
+              <rect x="552" y="108" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 64 -->
+              <line x1="562" y1="100" x2="562" y2="116" stroke="#22C55E"/>
+              <rect x="560" y="104" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 65 -->
+              <line x1="570" y1="102" x2="570" y2="120" stroke="#EF4444"/>
+              <rect x="568" y="106" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 66 -->
+              <line x1="578" y1="106" x2="578" y2="124" stroke="#EF4444"/>
+              <rect x="576" y="110" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 67 -->
+              <line x1="586" y1="108" x2="586" y2="126" stroke="#EF4444"/>
+              <rect x="584" y="112" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 68 -->
+              <line x1="594" y1="104" x2="594" y2="120" stroke="#22C55E"/>
+              <rect x="592" y="108" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 69 -->
+              <line x1="602" y1="98" x2="602" y2="114" stroke="#22C55E"/>
+              <rect x="600" y="102" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 70 -->
+              <line x1="610" y1="94" x2="610" y2="110" stroke="#22C55E"/>
+              <rect x="608" y="98" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 71 -->
+              <line x1="618" y1="92" x2="618" y2="108" stroke="#22C55E"/>
+              <rect x="616" y="96" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 72 -->
+              <line x1="626" y1="96" x2="626" y2="114" stroke="#EF4444"/>
+              <rect x="624" y="100" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 73 -->
+              <line x1="634" y1="100" x2="634" y2="118" stroke="#EF4444"/>
+              <rect x="632" y="104" width="4" height="12" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 74 -->
+              <line x1="642" y1="96" x2="642" y2="114" stroke="#22C55E"/>
+              <rect x="640" y="100" width="4" height="12" fill="none" stroke="#22C55E"/>
+              <!-- 75 -->
+              <line x1="650" y1="92" x2="650" y2="108" stroke="#22C55E"/>
+              <rect x="648" y="96" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 76 -->
+              <line x1="658" y1="90" x2="658" y2="106" stroke="#22C55E"/>
+              <rect x="656" y="94" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 77 -->
+              <line x1="666" y1="88" x2="666" y2="104" stroke="#22C55E"/>
+              <rect x="664" y="92" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 78 -->
+              <line x1="674" y1="92" x2="674" y2="108" stroke="#EF4444"/>
+              <rect x="672" y="96" width="4" height="10" fill="#EF4444" stroke="#EF4444"/>
+              <!-- 79 -->
+              <line x1="682" y1="88" x2="682" y2="104" stroke="#22C55E"/>
+              <rect x="680" y="92" width="4" height="10" fill="none" stroke="#22C55E"/>
+              <!-- 80 — last bar, current price ~238.45 → y ≈ 240 - ((238.45-220)/40)*220 ≈ 138.5 -->
+              <line x1="690" y1="86" x2="690" y2="102" stroke="#22C55E"/>
+              <rect x="688" y="90" width="4" height="10" fill="none" stroke="#22C55E"/>
+            </g>
+
+            <!-- Current price horizontal dotted line at y≈138 (238.45) -->
+            <g>
+              <line x1="50" y1="138" x2="700" y2="138" stroke="#22D3EE" stroke-width="1" stroke-dasharray="2 4" opacity="0.6"/>
+              <rect x="700" y="130" width="60" height="16" fill="#0A0A0A" stroke="#22D3EE"/>
+              <text x="730" y="142" class="axis-text" text-anchor="middle" fill="#22D3EE">238.45</text>
+            </g>
+
+            <!-- Call markers — 4 circles at posted_at positions -->
+            <!-- Approx x positions for call dates within last ~3 weeks of chart (x=620..690 region) -->
+            <!-- 2026-04-12 BoWS  long market   conf 0.82  +1.8%  → green -->
+            <g>
+              <circle cx="640" cy="100" r="6" fill="#0A0A0A" stroke="#22C55E" stroke-width="1.5"/>
+              <text x="640" y="86" class="axis-text" text-anchor="middle" fill="#22C55E">+1.8%</text>
+            </g>
+            <!-- 2026-04-20 TraderLion short trigger_below 228 conf 0.65 −1.1% (raw) → red -->
+            <g>
+              <circle cx="660" cy="106" r="6" fill="#0A0A0A" stroke="#EF4444" stroke-width="1.5"/>
+              <text x="660" y="122" class="axis-text" text-anchor="middle" fill="#EF4444">−1.1%</text>
+            </g>
+            <!-- 2026-04-25 SMM long limit 232.00 conf 0.78 +3.2% → green -->
+            <g>
+              <circle cx="676" cy="94" r="6" fill="#0A0A0A" stroke="#22C55E" stroke-width="1.5"/>
+              <text x="676" y="80" class="axis-text" text-anchor="middle" fill="#22C55E">+3.2%</text>
+            </g>
+            <!-- 2026-05-02 SMM long limit 235 conf 0.71 pending → amber -->
+            <g>
+              <circle cx="690" cy="92" r="6" fill="#0A0A0A" stroke="#F59E0B" stroke-width="1.5"/>
+              <text x="690" y="78" class="axis-text" text-anchor="middle" fill="#F59E0B">PEND</text>
+            </g>
+          </svg>
+
+          <div class="flex items-center justify-between mt-2 px-1">
+            <span class="t-10 ucase c-dim">365D · 1D bars · adj. close · source: yfinance (cached)</span>
+            <span class="t-10 ucase c-dim">Y 220.00 — 260.00 · 4 markers</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ (4) RECENT CLAIMS FEED ============ -->
+      <div class="panel">
+        <div class="eyebrow">
+          <span>Recent Claims · evidence-quoted</span>
+          <span class="right">5 OF 11 · LAST 30D · SORT: DATE DESC ▾</span>
+        </div>
+
+        <table class="term">
+          <thead>
+            <tr>
+              <th style="width: 88px;">Date</th>
+              <th style="width: 150px;">Creator</th>
+              <th style="width: 70px;">Type</th>
+              <th style="width: 88px;">Polarity</th>
+              <th style="width: 80px;">Class</th>
+              <th>Summary &amp; Evidence</th>
+              <th style="width: 60px;">Src</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Row 1 -->
+            <tr>
+              <td class="num c-muted">2026-04-30</td>
+              <td>Stock Market Mentor</td>
+              <td class="ucase t-10 c-cyan">thesis</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="num c-green">+1</span>
+                  <!-- inline sparkline: creator polarity over 30d -->
+                  <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                    <polyline fill="none" stroke="#22D3EE" stroke-width="1"
+                      points="0,12 8,11 16,9 24,10 32,7 40,6 48,4 60,3"/>
+                    <circle cx="60" cy="3" r="1.5" fill="#22D3EE"/>
+                  </svg>
+                </div>
+              </td>
+              <td><span class="badge badge-muted">OPINION</span></td>
+              <td>
+                <div class="t-12">Cup-and-handle setup into earnings</div>
+                <details class="evidence" open>
+                  <summary>evidence quote · 1 of 1</summary>
+                  <blockquote>"AAPL is setting up for a textbook cup-and-handle into May earnings, looks like a clean breakout above 240 with volume confirmation"</blockquote>
+                </details>
+              </td>
+              <td><a class="term-link num t-11" href="#">3:14</a></td>
+            </tr>
+
+            <!-- Row 2 -->
+            <tr>
+              <td class="num c-muted">2026-04-28</td>
+              <td>TraderLion</td>
+              <td class="ucase t-10 c-cyan">risk</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="num c-red">−1</span>
+                  <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                    <polyline fill="none" stroke="#22D3EE" stroke-width="1"
+                      points="0,5 10,6 20,7 28,9 36,11 44,10 52,12 60,13"/>
+                    <circle cx="60" cy="13" r="1.5" fill="#22D3EE"/>
+                  </svg>
+                </div>
+              </td>
+              <td><span class="badge badge-amber">CONDITIONAL</span></td>
+              <td>
+                <div class="t-12">230 break = downtrend</div>
+                <details class="evidence" open>
+                  <summary>evidence quote · 1 of 1</summary>
+                  <blockquote>"If AAPL loses 230 with conviction we're looking at a multi-week downtrend, no question — that's the line in the sand"</blockquote>
+                </details>
+              </td>
+              <td><a class="term-link num t-11" href="#">7:42</a></td>
+            </tr>
+
+            <!-- Row 3 -->
+            <tr>
+              <td class="num c-muted">2026-04-22</td>
+              <td>Bulls on Wall Street</td>
+              <td class="ucase t-10 c-cyan">catalyst</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="num c-green">+1</span>
+                  <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                    <polyline fill="none" stroke="#22D3EE" stroke-width="1"
+                      points="0,9 12,8 22,9 32,7 42,6 52,5 60,4"/>
+                    <circle cx="60" cy="4" r="1.5" fill="#22D3EE"/>
+                  </svg>
+                </div>
+              </td>
+              <td><span class="badge badge-cyan">FACTUAL</span></td>
+              <td>
+                <div class="t-12">iPhone 17 Pro pre-orders strong</div>
+                <details class="evidence">
+                  <summary>evidence quote · 1 of 1</summary>
+                  <blockquote>"iPhone 17 Pro pre-orders are the strongest we've seen in three years according to the supply chain checks"</blockquote>
+                </details>
+              </td>
+              <td><a class="term-link num t-11" href="#">12:08</a></td>
+            </tr>
+
+            <!-- Row 4 -->
+            <tr>
+              <td class="num c-muted">2026-04-15</td>
+              <td>Adam Mancini</td>
+              <td class="ucase t-10 c-cyan">level</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="num c-muted">0</span>
+                  <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                    <polyline fill="none" stroke="#22D3EE" stroke-width="1"
+                      points="0,8 10,9 20,8 30,8 40,8 50,8 60,8"/>
+                    <circle cx="60" cy="8" r="1.5" fill="#22D3EE"/>
+                  </svg>
+                </div>
+              </td>
+              <td><span class="badge badge-cyan">FACTUAL</span></td>
+              <td>
+                <div class="t-12">Key support 234.50</div>
+                <details class="evidence">
+                  <summary>evidence quote · 1 of 1</summary>
+                  <blockquote>"234.50 is the line bulls have to defend, simple as that"</blockquote>
+                </details>
+              </td>
+              <td><a class="term-link num t-11" href="#">2:30</a></td>
+            </tr>
+
+            <!-- Row 5 -->
+            <tr>
+              <td class="num c-muted">2026-04-08</td>
+              <td>Stock Market Mentor</td>
+              <td class="ucase t-10 c-cyan">thesis</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="num c-green">+1</span>
+                  <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                    <polyline fill="none" stroke="#22D3EE" stroke-width="1"
+                      points="0,12 10,11 20,10 30,9 40,7 50,5 60,3"/>
+                    <circle cx="60" cy="3" r="1.5" fill="#22D3EE"/>
+                  </svg>
+                </div>
+              </td>
+              <td><span class="badge badge-muted">OPINION</span></td>
+              <td>
+                <div class="t-12">Buy zone 230–235</div>
+                <details class="evidence">
+                  <summary>evidence quote · 1 of 1</summary>
+                  <blockquote>"I'd be a buyer in the 230 to 235 zone all day, that's where I'm placing limits"</blockquote>
+                </details>
+              </td>
+              <td><a class="term-link num t-11" href="#">5:55</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="t-10 ucase c-dim px-3 py-2 hair-t flex items-center justify-between">
+          <span>Showing 5 of 11 (30d) · 6 more older claims</span>
+          <span class="c-cyan">▾ LOAD ALL</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =================================================== -->
+    <!-- RIGHT RAIL: calls table + creator coverage + methodology  -->
+    <!-- =================================================== -->
+    <aside class="flex flex-col gap-4 min-w-0">
+
+      <!-- ============ (5) TRADE CALLS TABLE ============ -->
+      <div class="panel">
+        <div class="eyebrow">
+          <span>Trade Calls</span>
+          <span class="right">N=4 · ALL ACCEPTED</span>
+        </div>
+        <table class="term">
+          <thead>
+            <tr>
+              <th>Posted</th>
+              <th>Creator</th>
+              <th>Dir</th>
+              <th>Entry</th>
+              <th>Conf</th>
+              <th>Status</th>
+              <th class="text-right">5d ret</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="num c-muted">04-25</td>
+              <td>SMM</td>
+              <td class="ucase t-10 c-green">long</td>
+              <td class="t-11"><span class="c-muted">limit</span> <span class="num">232.00</span></td>
+              <td class="num">0.78</td>
+              <td><span class="badge badge-green">ACCEPT</span></td>
+              <td class="num c-green text-right">+3.2%</td>
+            </tr>
+            <tr>
+              <td class="num c-muted">04-20</td>
+              <td>TraderLion</td>
+              <td class="ucase t-10 c-red">short</td>
+              <td class="t-11"><span class="c-muted">trig&lt;</span> <span class="num">228.00</span></td>
+              <td class="num">0.65</td>
+              <td><span class="badge badge-green">ACCEPT</span></td>
+              <td class="num c-red text-right">−1.1%</td>
+            </tr>
+            <tr>
+              <td class="num c-muted">04-12</td>
+              <td>BoWS</td>
+              <td class="ucase t-10 c-green">long</td>
+              <td class="t-11"><span class="c-muted">market</span></td>
+              <td class="num">0.82</td>
+              <td><span class="badge badge-green">ACCEPT</span></td>
+              <td class="num c-green text-right">+1.8%</td>
+            </tr>
+            <tr>
+              <td class="num c-muted">05-02</td>
+              <td>SMM</td>
+              <td class="ucase t-10 c-green">long</td>
+              <td class="t-11"><span class="c-muted">limit</span> <span class="num">235.00</span></td>
+              <td class="num">0.71</td>
+              <td><span class="badge badge-amber">PEND</span></td>
+              <td class="num c-dim text-right">—</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="t-10 ucase c-dim px-3 py-2 hair-t">
+          5d ret = price net of 10 bps round-trip · raw return shown for shorts (not P&amp;L)
+        </div>
+      </div>
+
+      <!-- ============ (6) CREATOR COVERAGE PANEL ============ -->
+      <div class="panel">
+        <div class="eyebrow">
+          <span>Creator Coverage on AAPL</span>
+          <span class="right">SORT: CRED ↓ · MENTIONS ↓</span>
+        </div>
+
+        <!-- Each creator as a stacked row (right rail is narrow) -->
+        <ul>
+          <!-- TraderLion -->
+          <li class="px-3 py-3 hair-b">
+            <div class="flex items-baseline justify-between">
+              <span class="t-12">TraderLion</span>
+              <span class="t-10 num c-muted">3 calls · 5 claims</span>
+            </div>
+            <div class="grid grid-cols-2 mt-2 gap-y-1">
+              <span class="t-10 ucase c-muted">Most recent</span>
+              <span class="t-11 num text-right c-muted">2026-04-28</span>
+              <span class="t-10 ucase c-muted">Hit_rate (lower CI)</span>
+              <span class="t-11 num text-right">0.51 <span class="ci">[0.51–0.74]</span></span>
+              <span class="t-10 ucase c-muted">Net polarity (this ticker)</span>
+              <span class="t-11 num text-right c-green flex items-center justify-end gap-2">
+                +0.20
+                <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                  <polyline fill="none" stroke="#22D3EE" stroke-width="1" points="0,7 12,8 24,9 36,10 48,11 60,9"/>
+                  <circle cx="60" cy="9" r="1.5" fill="#22D3EE"/>
+                </svg>
+              </span>
+            </div>
+          </li>
+
+          <!-- Stock Market Mentor -->
+          <li class="px-3 py-3 hair-b">
+            <div class="flex items-baseline justify-between">
+              <span class="t-12">Stock Market Mentor</span>
+              <span class="t-10 num c-muted">2 calls · 4 claims</span>
+            </div>
+            <div class="grid grid-cols-2 mt-2 gap-y-1">
+              <span class="t-10 ucase c-muted">Most recent</span>
+              <span class="t-11 num text-right c-muted">2026-04-30</span>
+              <span class="t-10 ucase c-muted">Hit_rate (lower CI)</span>
+              <span class="t-11 num text-right">0.42 <span class="ci">[0.42–0.69]</span></span>
+              <span class="t-10 ucase c-muted">Net polarity (this ticker)</span>
+              <span class="t-11 num text-right c-green flex items-center justify-end gap-2">
+                +0.40
+                <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                  <polyline fill="none" stroke="#22D3EE" stroke-width="1" points="0,11 12,10 24,9 36,7 48,5 60,4"/>
+                  <circle cx="60" cy="4" r="1.5" fill="#22D3EE"/>
+                </svg>
+              </span>
+            </div>
+          </li>
+
+          <!-- Bulls on Wall Street -->
+          <li class="px-3 py-3 hair-b">
+            <div class="flex items-baseline justify-between">
+              <span class="t-12">Bulls on Wall Street</span>
+              <span class="t-10 num c-muted">1 call · 2 claims</span>
+            </div>
+            <div class="grid grid-cols-2 mt-2 gap-y-1">
+              <span class="t-10 ucase c-muted">Most recent</span>
+              <span class="t-11 num text-right c-muted">2026-04-22</span>
+              <span class="t-10 ucase c-muted">Hit_rate (lower CI)</span>
+              <span class="t-11 num text-right">0.38 <span class="ci">[0.38–0.71]</span></span>
+              <span class="t-10 ucase c-muted">Net polarity (this ticker)</span>
+              <span class="t-11 num text-right c-green flex items-center justify-end gap-2">
+                +0.50
+                <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                  <polyline fill="none" stroke="#22D3EE" stroke-width="1" points="0,10 15,9 30,8 45,6 60,5"/>
+                  <circle cx="60" cy="5" r="1.5" fill="#22D3EE"/>
+                </svg>
+              </span>
+            </div>
+          </li>
+
+          <!-- Adam Mancini -->
+          <li class="px-3 py-3">
+            <div class="flex items-baseline justify-between">
+              <span class="t-12">Adam Mancini</span>
+              <span class="t-10 num c-muted">0 calls · 1 claim</span>
+            </div>
+            <div class="grid grid-cols-2 mt-2 gap-y-1">
+              <span class="t-10 ucase c-muted">Most recent</span>
+              <span class="t-11 num text-right c-muted">2026-04-15</span>
+              <span class="t-10 ucase c-muted">Hit_rate (lower CI)</span>
+              <span class="t-11 text-right"><span class="badge badge-amber">UNCALIBRATED</span></span>
+              <span class="t-10 ucase c-muted">Net polarity (this ticker)</span>
+              <span class="t-11 num text-right c-muted flex items-center justify-end gap-2">
+                +0.00
+                <svg class="spark" width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
+                  <polyline fill="none" stroke="#22D3EE" stroke-width="1" points="0,8 15,8 30,8 45,8 60,8"/>
+                  <circle cx="60" cy="8" r="1.5" fill="#22D3EE"/>
+                </svg>
+              </span>
+            </div>
+          </li>
+        </ul>
+        <div class="t-10 ucase c-dim px-3 py-2 hair-t">
+          Hit_rate is per-creator across all tickers · Wilson 95% CI · "uncalibrated" if N&lt;10 calls
+        </div>
+      </div>
+
+      <!-- ============ (8) METHODOLOGY / DATA-STATE FOOTER ============ -->
+      <div class="panel" id="methodology">
+        <div class="eyebrow">
+          <span>Methodology &amp; Data State</span>
+          <span class="right">PIPELINE OK</span>
+        </div>
+        <div class="p-3 t-11">
+          <div class="grid grid-cols-2 gap-y-2">
+            <span class="c-muted ucase t-10">Last extractor run</span>
+            <span class="num text-right">2026-05-04</span>
+            <span class="c-muted ucase t-10">Last aggregate-signals</span>
+            <span class="num text-right">2026-05-05 06:30 UTC</span>
+            <span class="c-muted ucase t-10">Total mentions (this ticker)</span>
+            <span class="num text-right">15 <span class="ci">(threshold N≥5)</span></span>
+            <span class="c-muted ucase t-10">Backtest activation</span>
+            <span class="num text-right">leakage-guarded</span>
+            <span class="c-muted ucase t-10">Round-trip cost</span>
+            <span class="num text-right">10 bps</span>
+          </div>
+
+          <div class="hair-t mt-3 pt-3">
+            <div class="t-10 ucase c-muted mb-2">Decision records</div>
+            <ul class="t-11 space-y-1">
+              <li><a class="term-link" href="#">ADR-0005 — product pivot to decision-support</a></li>
+              <li><a class="term-link" href="#">ADR-0006 — claims and ticker signals</a></li>
+              <li><a class="term-link" href="#">ADR-0003 — backtest assumptions</a> · <a class="term-link" href="#">ADR-0007 — strategies &amp; walk-forward</a></li>
+            </ul>
+          </div>
+
+          <!-- Inactive low-N banner example -->
+          <div class="hair-t mt-3 pt-3">
+            <div class="t-10 ucase c-muted mb-2">Low-N banner — inactive example</div>
+            <div class="lown-banner">
+              <div class="flex items-baseline justify-between">
+                <span class="t-10 ucase">⚠ Low sample size</span>
+                <span class="t-10 ucase c-dim">N=3 · threshold 5</span>
+              </div>
+              <div class="t-11 mt-1 c-muted">
+                Would render <em>above</em> the signal strip when total mentions &lt; 5. Polarity remains shown but should be read as indicative, not statistical. Wilson CIs widen accordingly.
+              </div>
+            </div>
+            <div class="t-10 c-dim mt-2">Currently inactive · this ticker has N=15</div>
+          </div>
+
+          <div class="hair-t mt-3 pt-3 t-10 c-dim">
+            Decision support, not investment advice. See <a class="term-link" href="#">disclaimer</a>.
+            All datetimes UTC; market math in America/New_York (XNYS).
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- Bottom status bar (terminal chrome) -->
+  <div class="hair-t mt-6 pt-3 flex items-center justify-between t-10 ucase c-dim">
+    <span>TSR v0.6 · ticker:AAPL · view:overview</span>
+    <span class="num">SQLITE OK · YFINANCE CACHED · EXTRACTOR v0.1 · 164 TESTS GREEN</span>
+    <span>RENDERED 2026-05-05 14:22:08 UTC</span>
+  </div>
+
+</main>
+
+</body>
+</html>

@@ -1,8 +1,10 @@
 # ADR 0005 — Product pivot: decision-support platform, ticker-first
 
-**Status:** accepted
+**Status:** accepted (2026-05-05) · **partially relaxed** by [ADR 0008](0008-action-signal-labeling.md) (2026-05-07)
 **Date:** 2026-05-05
 **Supersedes parts of:** [0001](0001-source-abstraction.md) framing language; the README's V1 pitch.
+
+> **Update 2026-05-07:** [ADR 0008](0008-action-signal-labeling.md) relaxes the "no naked buy/sell labels" clause in §3 below. An *implied* action label (BUY / ACCUMULATE / HOLD / WAIT / REDUCE / AVOID / N/A) is now emitted as a deterministic view over the existing `DecisionSupportStatus` rubric, with the derivation shown inline. The substrate ("decision support, not advice") is unchanged; the change is purely vocabulary in the UI.
 
 ## Context
 

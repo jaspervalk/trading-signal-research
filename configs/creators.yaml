@@ -122,7 +122,12 @@ creators:
     external_id: "UCokSy9UkcPDCYyrU5_6835w"
     handle: "@stockbee"
     url: "https://www.youtube.com/@stockbee"
-    active: true
+    active: false   # 2026-05-07: channel_id above resolves to a Vietnamese
+                    # livestream channel, NOT Pradeep Bonde. Three docs ingested
+                    # (Vietnamese livestreams about TTCK Việt Nam) — extraction
+                    # produces 0 calls because the language isn't English, so
+                    # they're inert noise in the corpus. Find the correct
+                    # Pradeep Bonde channel ID and reactivate.
     notes: |
       Pradeep Bonde. Momentum-burst swing setups (3-5 day holds, 8-20% targets).
       Channel cadence is sporadic — strongest content is on his blog. Useful
