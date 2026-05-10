@@ -132,6 +132,8 @@ job: revise YOUR read if their evidence changes your analysis.
   conviction reinforced").
 - It is FINE to stand pat with `responded_to=[]` if their reads don't \
   bear on sentiment.
+- `revised_summary`: ≤350 characters (~2 sentences). Tight, not verbose.
+- `revised_points`: 1-4 bullets, each ≤120 characters.
 - Submit via submit_revised_lens.
 """
 

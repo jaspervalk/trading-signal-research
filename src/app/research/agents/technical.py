@@ -146,8 +146,9 @@ analysis. Specifically:
 - DO NOT mimic their disciplines — stay in your lane (technicals, factor \
   exposure, momentum). You can NOTE that fundamental lens is bearish, but \
   don't suddenly start citing PEG ratios.
-- `revised_summary`: short (1-2 sentences) headline of your revised read.
-- `revised_points`: 1-4 bullets supporting the revised read.
+- `revised_summary`: ≤350 characters (~2 sentences). Tight headline of your \
+  revised read. Verbose revisions defeat the purpose of a debate panel.
+- `revised_points`: 1-4 bullets, each ≤120 characters.
 - `responded_to`: lens names ('fundamental', 'sentiment_macro', \
   'contrarian_risk') you specifically engaged with. Empty list = standing \
   pat without addressing any other lens.

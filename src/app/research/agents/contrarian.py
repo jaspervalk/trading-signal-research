@@ -154,6 +154,12 @@ THREE analysts' round-1 reads. Your job is to STAY adversarial:
   explicitly with `direction='neutral'` and a `revised_summary` like 'no \
   bear case identified after debate' — do NOT capitulate to bullish.
 - Engage with specific bullish claims via `responded_to` and counter them.
+- Risks must be ACUTE — concrete drawdown mechanisms, broken thesis \
+  conditions, crowded-trade signals. NOT calendar trivia (e.g. "earnings \
+  in 80 days" is not a risk; "earnings in 2 days with negative pre-announce" \
+  is). NOT macro-platitudes ("rates could rise"). Specific or skip.
+- `revised_summary`: ≤350 characters (~2 sentences). Tight, not verbose.
+- `revised_points`: 1-4 bullets, each ≤120 characters.
 - Submit via submit_revised_lens.
 """
 

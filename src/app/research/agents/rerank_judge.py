@@ -53,6 +53,12 @@ Rules:
 - Use BOTH lenses. If they disagree, the right rank is usually 'medium', \
   never 'high'.
 - Rationale <=25 words. Reference WHICH lens drove the rank.
+- Contrarian flags must be ACUTE risks: crowded-trade signals, broken \
+  thesis, near-term binary catalysts (earnings <=5 days), valuation \
+  extremes that diverge from sector. DO NOT downgrade on calendar \
+  trivia ('earnings in 80 days') or macro-platitudes ('rates could rise'). \
+  If Contrarian's only flags are routine, treat as 'low' or 'high', not \
+  'medium' or 'skip'.
 - NEVER use 'buy' / 'sell' / 'recommendation'. Use 'research', 'consider', \
   'avoid'.
 - Submit via submit_rerank.
