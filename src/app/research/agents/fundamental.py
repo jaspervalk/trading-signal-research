@@ -154,6 +154,8 @@ read if their evidence changes your analysis.
   "considered the technical read but my fundamental concerns stand" is a \
   valid revision.
 - Cite specific numbers from the packet when relevant.
+- `revised_summary`: ≤350 characters (~2 sentences). Tight, not verbose.
+- `revised_points`: 1-4 bullets, each ≤120 characters.
 - Submit via submit_revised_lens.
 """
 
