@@ -246,11 +246,11 @@ def _format_capital_block(f: FundamentalsExtended | None, val) -> str:
     if f is None:
         return "(not fetched)"
     lines = [
-        f"FCF (TTM): {_fmt_dollars(f.fcf_ttm)} → FCF yield "
+        f"FCF (latest FY): {_fmt_dollars(f.fcf_ttm)} → FCF yield "
         f"{_fmt_pct(f.fcf_yield)} of market cap",
-        f"Capex (TTM): {_fmt_dollars(f.capex_ttm)} → "
+        f"Capex (latest FY): {_fmt_dollars(f.capex_ttm)} → "
         f"{_fmt_pct(f.capex_pct_revenue)} of revenue",
-        f"Buyback yield (TTM cash repurchases / market cap): "
+        f"Buyback yield (latest FY cash repurchases / market cap): "
         f"{_fmt_pct(f.buyback_yield_ttm)}",
         f"Shares outstanding YoY change: "
         f"{_fmt_pct(f.shares_outstanding_yoy_pct)} (negative = buybacks net of "

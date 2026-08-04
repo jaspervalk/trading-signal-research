@@ -86,9 +86,9 @@ class FundamentalsExtended:
     net_income_fy_minus_1: float | None = None
     net_income_fy_minus_0: float | None = None
 
-    fcf_ttm: float | None = None
+    fcf_ttm: float | None = None  # Most recent fiscal year (from yfinance.cashflow annual cols), not TTM
     fcf_yield: float | None = None
-    capex_ttm: float | None = None
+    capex_ttm: float | None = None  # Most recent fiscal year, not TTM; name is historical
     capex_pct_revenue: float | None = None
 
     current_ratio: float | None = None
@@ -99,7 +99,7 @@ class FundamentalsExtended:
 
     shares_outstanding_now: float | None = None
     shares_outstanding_yoy_pct: float | None = None  # positive = dilution
-    buyback_yield_ttm: float | None = None  # positive = buying back; share of market cap
+    buyback_yield_ttm: float | None = None  # Most recent fiscal year (not TTM); positive = buying back; share of market cap
 
     fetch_error: str | None = None
     sources_used: list[str] = field(default_factory=list)
