@@ -55,6 +55,21 @@ By that test, this project has **three subagents** and **one skill**. Adding mor
 
 **Why a skill (not just an agent invocation).** Repeatable procedure with arguments (e.g., `/extract-eval --since 2026-04-01`). Skills are the right home for "things you run by name."
 
+### `/screen`
+
+**Invocation.** `/screen` (slash command) or auto-routed when the user asks to "find candidates," "screen for value/growth/quality/momentum," "find undervalued stocks," or otherwise wants to surface tickers outside the YouTube universe.
+
+**What it does.** Runs `tsr screen` over the S&P 500 + Nasdaq-100 universe with the user's chosen filter set and threshold overrides, then summarises the funnel output: passing count, top candidates, flags (`cheap_for_a_reason`, earnings proximity, extended above 200d). Suggests the top 3-5 names for `tsr research <TICKER>` (deterministic view) or Deep mode in the dashboard.
+
+**Why a skill (not a subagent).** It's a parameterised procedure with strict framing rules — most importantly the rule that **creator coverage is additive, never penalising** — and the user calls it often enough that codifying the framing in one place is worth it. There's no context-isolation argument (a few-dozen-row table fits comfortably), so the subagent test doesn't apply.
+
+**Hard rules baked in.**
+- Creator coverage is shown but never sorted on.
+- No composite scores in summaries.
+- Always frames output as decision support (ADR 0005), never as buy/sell guidance.
+
+**Module:** [src/app/screener/](../src/app/screener/). **CLI:** `tsr screen`, `tsr screen-refresh-universe`. **Skill:** [.claude/skills/screen/SKILL.md](../.claude/skills/screen/SKILL.md).
+
 ## What we deliberately did *not* create
 
 The original brief listed ten candidate agents. Eight were rejected with reasoning:

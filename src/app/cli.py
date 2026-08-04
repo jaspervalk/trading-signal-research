@@ -690,5 +690,147 @@ def _print_research_view(view) -> None:  # noqa: ANN001 — local helper
     typer.echo("")
 
 
+# ---------------------------------------------------------------------------
+# Screener (broad-universe funnel — finds tickers, hands off to research deep)
+
+
+@app.command(name="screen")
+def screen(
+    value: bool = typer.Option(False, "--value", help="Enable valuation filter."),
+    growth: bool = typer.Option(False, "--growth", help="Enable growth filter."),
+    quality: bool = typer.Option(False, "--quality", help="Enable quality filter."),
+    technical: bool = typer.Option(
+        False, "--technical", help="Enable technical-momentum filter."
+    ),
+    min_pe: float = typer.Option(
+        None, "--min-pe", help="Override max forward P/E threshold."
+    ),
+    max_peg: float = typer.Option(None, "--max-peg", help="Override max PEG."),
+    min_rev_growth: float = typer.Option(
+        None, "--min-rev-growth", help="Override min revenue growth (fraction)."
+    ),
+    sector: str | None = typer.Option(
+        None, "--sector", help="Restrict to one sector (case-insensitive)."
+    ),
+    output: str = typer.Option(
+        "table", "--output", help="Format: table | csv | json."
+    ),
+    universe_path: str | None = typer.Option(
+        None, "--universe", help="Override path to screen_universe.csv."
+    ),
+    limit: int = typer.Option(
+        50, "--limit", help="Truncate table to N rows (only affects display)."
+    ),
+    max_workers: int = typer.Option(
+        8, "--workers", help="Concurrent fetch workers."
+    ),
+    rps: float = typer.Option(
+        2.0, "--rps", help="Yfinance requests-per-second cap."
+    ),
+    no_cache: bool = typer.Option(
+        False, "--no-cache", help="Bypass the 24h disk cache."
+    ),
+    no_save: bool = typer.Option(
+        False, "--no-save", help="Skip writing data/screens/YYYY-MM-DD.json."
+    ),
+    show_all: bool = typer.Option(
+        False, "--all", help="Show every ticker, not just rows that passed a filter."
+    ),
+) -> None:
+    """Run the stock screener funnel over the configured universe.
+
+    Defaults to running ALL filters (a ticker passes the screen if it
+    passes ANY enabled filter). Pass any of --value / --growth / --quality
+    / --technical to restrict the active set.
+
+    Creator coverage is shown as a bonus column; tickers without coverage
+    are NEVER penalised.
+    """
+    from pathlib import Path
+
+    from app.db import session_scope
+    from app.screener.output import render_table, save_json, to_csv, to_json
+    from app.screener.pipeline import run_screen
+    from app.screener.schema import ScreenConfig
+    from app.screener.universe import load_universe
+
+    enabled: list[str] | None = None
+    requested = [
+        ("value", value),
+        ("growth", growth),
+        ("quality", quality),
+        ("technical", technical),
+    ]
+    if any(flag for _, flag in requested):
+        enabled = [name for name, flag in requested if flag]
+
+    overrides: dict[str, object] = {}
+    if min_pe is not None:
+        overrides["max_forward_pe"] = min_pe
+    if max_peg is not None:
+        overrides["max_peg"] = max_peg
+    if min_rev_growth is not None:
+        overrides["min_revenue_growth"] = min_rev_growth
+    if sector is not None:
+        overrides["sector"] = sector
+    if enabled is not None:
+        overrides["enabled_filters"] = enabled
+
+    config = ScreenConfig(**overrides)
+
+    universe_path_p = Path(universe_path) if universe_path else None
+    universe = (
+        load_universe(universe_path_p, sector=sector)
+        if universe_path_p
+        else load_universe(sector=sector)
+    )
+    if not universe:
+        typer.echo("Universe is empty after sector filter — nothing to screen.")
+        raise typer.Exit(code=1)
+
+    with session_scope() as session:
+        result = run_screen(
+            universe,
+            config=config,
+            session=session,
+            max_workers=max_workers,
+            requests_per_second=rps,
+            use_cache=not no_cache,
+        )
+
+    if not no_save:
+        path = save_json(result)
+        log.info("cli.screen.saved", path=str(path))
+
+    fmt = output.lower()
+    if fmt == "json":
+        typer.echo(to_json(result))
+    elif fmt == "csv":
+        typer.echo(to_csv(result, only_passing=not show_all))
+    else:
+        typer.echo(render_table(result, only_passing=not show_all, limit=limit))
+
+
+@app.command(name="screen-refresh-universe")
+def screen_refresh_universe(
+    output_path: str | None = typer.Option(
+        None, "--output", help="Override path. Defaults to configs/screen_universe.csv."
+    ),
+) -> None:
+    """Fetch S&P 500 + Nasdaq-100 constituents from Wikipedia and rewrite the CSV."""
+    from pathlib import Path
+
+    from app.screener.universe import (
+        DEFAULT_UNIVERSE_PATH,
+        fetch_from_wikipedia,
+        write_universe,
+    )
+
+    entries = fetch_from_wikipedia()
+    path = Path(output_path) if output_path else DEFAULT_UNIVERSE_PATH
+    write_universe(entries, path)
+    typer.echo(f"Wrote {len(entries)} tickers to {path}")
+
+
 if __name__ == "__main__":
     app()

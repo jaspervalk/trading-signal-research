@@ -1,0 +1,133 @@
+ticker,name,sector,source
+AAPL,Apple,Technology,seed
+ABBV,AbbVie,Health Care,seed
+ABNB,Airbnb,Consumer Discretionary,seed
+ABT,Abbott,Health Care,seed
+ADBE,Adobe,Technology,seed
+AFRM,Affirm,Financials,seed
+AMAT,Applied Materials,Technology,seed
+AMD,Advanced Micro Devices,Technology,seed
+AMGN,Amgen,Health Care,seed
+AMZN,Amazon,Consumer Discretionary,seed
+ARM,Arm Holdings,Technology,seed
+AVGO,Broadcom,Technology,seed
+AXP,American Express,Financials,seed
+BA,Boeing,Industrials,seed
+BABA,Alibaba,Consumer Discretionary,seed
+BAC,Bank of America,Financials,seed
+BE,Bloom Energy,Industrials,seed
+BLK,BlackRock,Financials,seed
+BMY,Bristol-Myers Squibb,Health Care,seed
+BRK-B,Berkshire Hathaway,Financials,seed
+C,Citigroup,Financials,seed
+CAT,Caterpillar,Industrials,seed
+CMCSA,Comcast,Communication Services,seed
+CMG,Chipotle,Consumer Discretionary,seed
+COIN,Coinbase,Financials,seed
+COP,ConocoPhillips,Energy,seed
+COST,Costco,Consumer Staples,seed
+CRM,Salesforce,Technology,seed
+CRWD,CrowdStrike,Technology,seed
+CSCO,Cisco,Technology,seed
+CVX,Chevron,Energy,seed
+DASH,DoorDash,Consumer Discretionary,seed
+DDOG,Datadog,Technology,seed
+DE,Deere,Industrials,seed
+DHR,Danaher,Health Care,seed
+DIS,Disney,Communication Services,seed
+EA,Electronic Arts,Communication Services,seed
+EOG,EOG Resources,Energy,seed
+F,Ford,Consumer Discretionary,seed
+FDX,FedEx,Industrials,seed
+GE,GE Aerospace,Industrials,seed
+GILD,Gilead,Health Care,seed
+GM,General Motors,Consumer Discretionary,seed
+GOOG,Alphabet,Communication Services,seed
+GOOGL,Alphabet,Communication Services,seed
+GS,Goldman Sachs,Financials,seed
+HD,Home Depot,Consumer Discretionary,seed
+HIMS,Hims & Hers Health,Health Care,seed
+HLIT,Harmonic,Technology,seed
+HON,Honeywell,Industrials,seed
+HOOD,Robinhood,Financials,seed
+INTC,Intel,Technology,seed
+IREN,IREN Limited,Technology,seed
+ISRG,Intuitive Surgical,Health Care,seed
+JD,JD.com,Consumer Discretionary,seed
+JNJ,Johnson & Johnson,Health Care,seed
+JPM,JPMorgan Chase,Financials,seed
+KLAC,KLA,Technology,seed
+KO,Coca-Cola,Consumer Staples,seed
+LCID,Lucid,Consumer Discretionary,seed
+LLY,Eli Lilly,Health Care,seed
+LMT,Lockheed Martin,Industrials,seed
+LOW,Lowe's,Consumer Discretionary,seed
+LRCX,Lam Research,Technology,seed
+LYFT,Lyft,Industrials,seed
+MA,Mastercard,Financials,seed
+MCD,McDonald's,Consumer Discretionary,seed
+MDB,MongoDB,Technology,seed
+MDLZ,Mondelez,Consumer Staples,seed
+META,Meta Platforms,Communication Services,seed
+MO,Altria,Consumer Staples,seed
+MPC,Marathon Petroleum,Energy,seed
+MRK,Merck,Health Care,seed
+MRVL,Marvell,Technology,seed
+MS,Morgan Stanley,Financials,seed
+MSFT,Microsoft,Technology,seed
+MU,Micron,Technology,seed
+NBIS,Nebius Group,Technology,seed
+NET,Cloudflare,Technology,seed
+NFLX,Netflix,Communication Services,seed
+NIO,NIO,Consumer Discretionary,seed
+NKE,Nike,Consumer Discretionary,seed
+NOW,ServiceNow,Technology,seed
+NVDA,NVIDIA,Technology,seed
+NVO,Novo Nordisk,Health Care,seed
+ORCL,Oracle,Technology,seed
+OXY,Occidental,Energy,seed
+PANW,Palo Alto Networks,Technology,seed
+PDD,PDD Holdings,Consumer Discretionary,seed
+PEP,PepsiCo,Consumer Staples,seed
+PFE,Pfizer,Health Care,seed
+PG,Procter & Gamble,Consumer Staples,seed
+PINS,Pinterest,Communication Services,seed
+PLTR,Palantir,Technology,seed
+PM,Philip Morris,Consumer Staples,seed
+PSX,Phillips 66,Energy,seed
+PYPL,PayPal,Financials,seed
+QCOM,Qualcomm,Technology,seed
+RBLX,Roblox,Communication Services,seed
+REGN,Regeneron,Health Care,seed
+RIVN,Rivian,Consumer Discretionary,seed
+ROKU,Roku,Communication Services,seed
+RTX,RTX,Industrials,seed
+SBUX,Starbucks,Consumer Discretionary,seed
+SCHW,Charles Schwab,Financials,seed
+SHOP,Shopify,Technology,seed
+SLB,Schlumberger,Energy,seed
+SMCI,Super Micro Computer,Technology,seed
+SNAP,Snap,Communication Services,seed
+SNOW,Snowflake,Technology,seed
+SOFI,SoFi,Financials,seed
+SPOT,Spotify,Communication Services,seed
+SQ,Block,Technology,seed
+T,AT&T,Communication Services,seed
+TGT,Target,Consumer Discretionary,seed
+TMO,Thermo Fisher,Health Care,seed
+TMUS,T-Mobile US,Communication Services,seed
+TSLA,Tesla,Consumer Discretionary,seed
+TTWO,Take-Two Interactive,Communication Services,seed
+TXN,Texas Instruments,Technology,seed
+U,Unity,Communication Services,seed
+UBER,Uber,Industrials,seed
+UNH,UnitedHealth,Health Care,seed
+UNP,Union Pacific,Industrials,seed
+UPS,UPS,Industrials,seed
+V,Visa,Financials,seed
+VRTX,Vertex,Health Care,seed
+VZ,Verizon,Communication Services,seed
+WFC,Wells Fargo,Financials,seed
+WMT,Walmart,Consumer Staples,seed
+XOM,Exxon Mobil,Energy,seed
+ZS,Zscaler,Technology,seed
