@@ -162,8 +162,7 @@ src/app/
   strategies/           ADR 0007 — Strategy ABC + 3 baselines
   research/             entry/exit research feature: schema, exits, context, quick (1
                         LLM call), deep (4 agents + judge), agents/ subpackage
-  modeling/             ranker (deferred — empty for now)
-  reporting/            leaderboard rendering
+  screener/             broad-universe filter funnel (value/growth/quality/technical)
 configs/                creators.yaml, universe.csv, settings.yaml
 data/                   ingested data + caches (gitignored except gold/)
 notebooks/              eval reports — read-only consumers of src/app

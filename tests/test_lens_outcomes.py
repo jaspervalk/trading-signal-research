@@ -35,8 +35,8 @@ def _snapshot(session: Session, **overrides) -> LensSnapshot:
         plan_id=None,
         ticker="AAPL",
         # as_of must satisfy TWO constraints from compute_lens_outcomes:
-        # (1) be within max_age_days=60 to avoid freshness filter at line 57-64
-        # (2) be old enough that 21d horizon has elapsed (line 70-71 check)
+        # (1) be within max_age_days=60 freshness window so the snapshot isn't skipped
+        # (2) be older than the longest horizon (≈21 trading days) so outcomes are computable
         # This offset (45d) meets both: in-window AND far enough for all horizons.
         as_of=datetime.now(UTC) - timedelta(days=45),
         mode="deep",

@@ -16,7 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install
         run: |
-          uv venv
+          uv venv --python 3.11
           uv pip install -e ".[dev,api]"
       - name: Test
         run: .venv/bin/python -m pytest -q

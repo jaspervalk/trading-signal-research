@@ -58,10 +58,6 @@ out/
 
 # Playwright
 /test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-/playwright/.auth/
 TradingAgents/
 
 # Agent scratch
