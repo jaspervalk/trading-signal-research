@@ -6,7 +6,7 @@ Each new entity should land alongside the phase that uses it, not preemptively.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -985,4 +985,47 @@ class LensOutcome(Base):
         return (
             f"<LensOutcome snap={self.snapshot_id} {self.horizon} "
             f"ret={self.return_pct:+.2%} correct={self.direction_correct}>"
+        )
+
+
+# --- Portfolio Manager: manual trade ledger (ADR 0009) --------------------
+
+# The ONLY stored portfolio entity. Positions are derived by folding these
+# rows chronologically (see app/portfolio/ledger.py) — never stored, so they
+# cannot drift from the ledger when a trade is edited.
+#
+# price_per_share is in `currency` (the stock's native currency).
+# eur_amount is the all-in EUR total that actually moved in the account,
+# fees and FX spread included; it is optional and, when present on every
+# trade for a ticker, drives a parallel EUR cost-basis view.
+
+class PortfolioTrade(Base):
+    __tablename__ = "portfolio_trades"
+    __table_args__ = (
+        Index("ix_portfolio_trades_ticker", "ticker"),
+        Index("ix_portfolio_trades_traded_at", "traded_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    side: Mapped[str] = mapped_column(String(8))  # 'buy' | 'sell'
+    quantity: Mapped[float] = mapped_column(Float)  # fractional shares allowed
+    price_per_share: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    fees: Mapped[float] = mapped_column(Float, default=0.0)
+    traded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    eur_amount: Mapped[float | None] = mapped_column(Float)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PortfolioTrade {self.side} {self.quantity} {self.ticker} "
+            f"@ {self.price_per_share} {self.currency}>"
         )
