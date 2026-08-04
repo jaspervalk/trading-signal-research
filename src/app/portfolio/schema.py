@@ -99,7 +99,7 @@ class PortfolioView(BaseModel):
     total_market_value: float | None = None
     total_market_value_eur: float | None = None
     total_unrealized_pnl: float | None = None
-    total_realized_pnl: float = 0.0
+    total_realized_pnl: float | None = 0.0
     eur_usd_rate: float | None = None
     quote_errors: list[str] = Field(default_factory=list)
     as_of: datetime

@@ -88,6 +88,7 @@ def create_trade(session: Session, payload: TradeIn) -> PortfolioTrade:
         eur_amount=payload.eur_amount,
         note=payload.note,
     )
+    candidate.traded_at = _aware(candidate.traded_at)
     _validate_with(session, candidate, replacing=None)
 
     row = PortfolioTrade(
@@ -119,6 +120,7 @@ def update_trade(session: Session, trade_id: int, patch: TradePatch) -> Portfoli
     candidate = TradeRecord(**data)
     candidate.ticker = candidate.ticker.strip().upper()
     candidate.currency = candidate.currency.upper()
+    candidate.traded_at = _aware(candidate.traded_at)
 
     _validate_with(session, candidate, replacing=trade_id)
 
@@ -188,22 +190,40 @@ def build_portfolio_view(session: Session, *, with_quotes: bool = True) -> Portf
     closed_views = [v for v in views if v.quantity <= EPS]
 
     priced = [v for v in open_views if v.market_value is not None]
-    currencies = {v.currency for v in open_views}
-    total_value = sum(v.market_value for v in priced) if len(currencies) <= 1 and priced else None
-    total_unrealized = (
-        sum(v.unrealized_pnl for v in priced if v.unrealized_pnl is not None)
-        if len(currencies) <= 1 and priced
+    open_currencies = {v.currency for v in open_views}
+    fully_priced = bool(open_views) and len(priced) == len(open_views)
+    single_currency = len(open_currencies) <= 1
+
+    total_value = (
+        sum(v.market_value for v in priced)
+        if single_currency and fully_priced
         else None
     )
-    eur_values = [v.market_value_eur for v in open_views if v.market_value_eur is not None]
+    total_unrealized = (
+        sum(v.unrealized_pnl for v in priced if v.unrealized_pnl is not None)
+        if single_currency and fully_priced
+        else None
+    )
+
+    all_currencies = {v.currency for v in views}
+    total_realized = (
+        sum(v.realized_pnl for v in views) if len(all_currencies) <= 1 else None
+    )
+
+    eur_convertible = all(v.market_value_eur is not None for v in open_views)
+    total_market_value_eur = (
+        sum(v.market_value_eur for v in open_views)
+        if open_views and eur_convertible
+        else None
+    )
 
     return PortfolioView(
         open_positions=sorted(open_views, key=lambda v: v.ticker),
         closed_positions=sorted(closed_views, key=lambda v: v.ticker),
         total_market_value=total_value,
-        total_market_value_eur=sum(eur_values) if eur_values else None,
+        total_market_value_eur=total_market_value_eur,
         total_unrealized_pnl=total_unrealized,
-        total_realized_pnl=sum(v.realized_pnl for v in views),
+        total_realized_pnl=total_realized,
         eur_usd_rate=rate,
         quote_errors=sorted(errors),
         as_of=datetime.now(timezone.utc),

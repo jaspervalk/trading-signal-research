@@ -136,3 +136,83 @@ def test_empty_portfolio_view(session):
     view = service.build_portfolio_view(session)
     assert view.open_positions == []
     assert view.total_realized_pnl == 0.0
+
+
+def test_mixed_currency_open_positions_yield_none_totals(session):
+    service.create_trade(session, _in(ticker="NVDA", qty=10, price=100.0, day=0))
+    service.create_trade(
+        session, _in(ticker="ASML", qty=4, price=800.0, day=0, currency="EUR")
+    )
+
+    view = service.build_portfolio_view(session)
+    assert view.total_market_value is None
+    assert view.total_unrealized_pnl is None
+    assert view.total_realized_pnl is None
+
+
+def test_closed_position_in_other_currency_blocks_realized_total(session):
+    service.create_trade(session, _in(ticker="NVDA", qty=10, price=100.0, day=0))
+    service.create_trade(
+        session, _in(ticker="ASML", qty=4, price=800.0, day=0, currency="EUR")
+    )
+    service.create_trade(
+        session,
+        _in(ticker="ASML", side="sell", qty=4, price=900.0, day=1, currency="EUR"),
+    )
+
+    view = service.build_portfolio_view(session)
+    assert view.total_realized_pnl is None
+
+
+def test_partial_quote_failure_blocks_total_market_value(session, monkeypatch):
+    service.create_trade(session, _in(ticker="NVDA", qty=10, price=100.0, day=0))
+    service.create_trade(session, _in(ticker="NOSUCH", qty=5, price=50.0, day=0))
+
+    def _selective_fetch(ticker):
+        if ticker == "NOSUCH":
+            raise RuntimeError("no quote")
+        return pricing.Quote(
+            ticker=ticker, last_price=150.0, previous_close=140.0,
+            currency="USD", as_of=pricing._now(),
+        )
+
+    monkeypatch.setattr(pricing, "_fetch_one", _selective_fetch)
+    pricing.clear_cache()
+
+    view = service.build_portfolio_view(session)
+    assert view.total_market_value is None
+    assert "NOSUCH" in view.quote_errors
+
+
+def test_missing_fx_rate_blocks_eur_total(session, monkeypatch):
+    service.create_trade(session, _in(ticker="NVDA", qty=10, price=100.0, day=0))
+    service.create_trade(
+        session, _in(ticker="ASML", qty=4, price=800.0, day=0, currency="EUR")
+    )
+    monkeypatch.setattr(pricing, "get_eur_usd_rate", lambda: None)
+
+    view = service.build_portfolio_view(session)
+    assert view.total_market_value_eur is None
+
+
+def test_create_trade_accepts_naive_traded_at(session):
+    payload = TradeIn(
+        ticker="NVDA", side="buy", quantity=1, price_per_share=100.0,
+        traded_at=BASE.replace(tzinfo=None),
+    )
+    row = service.create_trade(session, payload)
+    assert row.id is not None
+    record = service.to_record(row)
+    assert record.traded_at.tzinfo is not None
+
+
+def test_single_currency_fully_priced_portfolio_has_totals(session):
+    service.create_trade(session, _in(ticker="NVDA", qty=10, price=100.0, day=0))
+    service.create_trade(session, _in(ticker="AAPL", qty=5, price=50.0, day=0))
+
+    view = service.build_portfolio_view(session)
+    assert view.total_market_value == pytest.approx(10 * 150.0 + 5 * 150.0)
+    assert view.total_unrealized_pnl == pytest.approx(
+        (10 * 150.0 - 10 * 100.0) + (5 * 150.0 - 5 * 50.0)
+    )
+    assert view.total_realized_pnl == pytest.approx(0.0)
