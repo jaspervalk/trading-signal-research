@@ -61,7 +61,9 @@ walkforward:
 # Entry/exit research feature (Quick + Deep modes).
 research:
   deep:
-    # Phase 2: round-2 cross-lens debate after the 4 analysts post round-1.
-    # Default off so existing Deep runs behave identically. Flip to true
-    # to enable revisions (cost +~$0.02/run, +~10s).
-    cross_lens_round: false
+    # Round-2 cross-lens debate after the 4 analysts post round-1.
+    # ON by default since 2026-08 (cost +~$0.02/run, +~10s per Deep run).
+    cross_lens_round: true
+    # Sentiment-Macro lens may issue web searches (+~$0.01/search).
+    sentiment_web_search: true
+    sentiment_web_search_max_uses: 1
