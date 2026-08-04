@@ -1,6 +1,6 @@
 """ORM entities. Phase 1a starts with the source/document/segment chain.
 
-Later phases extend with ExtractedCall, MarketSnapshot, OutcomeWindow, CreatorScorecard, etc.
+Later phases extend with ExtractedCall, OutcomeWindow, CreatorScorecard, etc.
 Each new entity should land alongside the phase that uses it, not preemptively.
 """
 
@@ -243,49 +243,6 @@ OUTCOME_STATUS_EVALUATED = "evaluated"
 OUTCOME_STATUS_NOT_TRIGGERED = "not_triggered"
 OUTCOME_STATUS_DATA_MISSING = "data_missing"
 OUTCOME_STATUS_FAILED = "failed"
-
-
-class MarketSnapshot(Base):
-    """Price + technical context for a ticker at a specific instant.
-
-    Computed once per (call.ticker, call.posted_at) so feature extraction for
-    the ranking model can read these directly without re-fetching prices.
-    """
-
-    __tablename__ = "market_snapshots"
-    __table_args__ = (
-        UniqueConstraint("ticker", "snapshot_at", name="uq_snapshot_ticker_at"),
-        Index("ix_snapshot_ticker_at", "ticker", "snapshot_at"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    ticker: Mapped[str] = mapped_column(String(16))
-    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-    # Most-recent regular-session close at-or-before snapshot_at.
-    price: Mapped[float | None] = mapped_column(Float)
-    volume: Mapped[int | None] = mapped_column(Integer)
-
-    # Technicals (all computed using only data with bar_time <= snapshot_at)
-    atr_14: Mapped[float | None] = mapped_column(Float)
-    return_5d: Mapped[float | None] = mapped_column(Float)
-    return_21d: Mapped[float | None] = mapped_column(Float)
-    return_63d: Mapped[float | None] = mapped_column(Float)
-    dist_to_ma20: Mapped[float | None] = mapped_column(Float)  # (price - MA20) / MA20
-    dist_to_ma50: Mapped[float | None] = mapped_column(Float)
-    dist_to_ma200: Mapped[float | None] = mapped_column(Float)
-    rsi_14: Mapped[float | None] = mapped_column(Float)
-    volume_ratio_20: Mapped[float | None] = mapped_column(Float)  # vol / 20d avg
-
-    # Market regime context (SPY-based) — same fields a model can read later.
-    spy_return_21d: Mapped[float | None] = mapped_column(Float)
-
-    computed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.utcnow()
-    )
-
-    def __repr__(self) -> str:
-        return f"<MarketSnapshot {self.ticker} @ {self.snapshot_at} price={self.price}>"
 
 
 class OutcomeWindow(Base):

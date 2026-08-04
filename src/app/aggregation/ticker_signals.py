@@ -261,9 +261,6 @@ def _aggregate_calls(
             sum(p * w for p, w in zip(polarities, weights)) / wsum if wsum else None
         )
 
-        # Trade-call-specific: distance-from-stated-level percentages.
-        # Skipped in V1 because they need the market price at posted_at, which
-        # is on MarketSnapshot (not joined here). Reserved for slice D-2.
         out[ticker] = TickerSignal(
             ticker=ticker,
             window_end=window_end,

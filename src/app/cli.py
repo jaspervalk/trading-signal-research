@@ -166,12 +166,6 @@ def aggregate_signals() -> None:
     log.info("cli.aggregate_signals.done", **summary)
 
 
-@app.command()
-def rank() -> None:
-    """Rank new calls with the trained model. (Phase 5)"""
-    typer.echo("rank: not implemented yet (Phase 5)")
-
-
 # Strategy registry — names listed here are valid `tsr backtest-strategy <name>`.
 # Adding a new strategy: add an import + dict entry; that's it.
 def _strategy_registry() -> dict[str, callable]:
