@@ -2,7 +2,7 @@
 
 The screener is intentionally **not** a ranking model. It filters a wide
 universe (S&P 500 + Nasdaq 100 by default) down to 20-40 candidates the
-user can hand to the existing `tsr research deep <TICKER>` pipeline.
+user can hand to the existing `tsr research <TICKER>` view (or Deep mode via the dashboard).
 
 Design rules (ADR 0005 framing applies):
 

@@ -17,7 +17,7 @@ The screener is a **funnel, not a ranking model** (ADR 0005 framing applies). It
    - `tsr screen` — all four filters, full universe.
    - `tsr screen --value --quality` — pure value + quality cross.
    - `tsr screen --sector Technology` — restrict universe by sector.
-   - `tsr screen --min-pe 20 --max-peg 1.2` — tighter thresholds.
+   - `tsr screen --max-pe 20 --max-peg 1.2` — tighter thresholds.
    - `tsr screen --output json` for machine-readable output.
 3. **Summarise the results to the user** in a tight format:
    - Count of tickers that passed at least one filter.

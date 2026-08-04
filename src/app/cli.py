@@ -691,7 +691,7 @@ def _print_research_view(view) -> None:  # noqa: ANN001 — local helper
 
 
 # ---------------------------------------------------------------------------
-# Screener (broad-universe funnel — finds tickers, hands off to research deep)
+# Screener (broad-universe funnel — finds tickers to research next)
 
 
 @app.command(name="screen")
@@ -702,8 +702,8 @@ def screen(
     technical: bool = typer.Option(
         False, "--technical", help="Enable technical-momentum filter."
     ),
-    min_pe: float = typer.Option(
-        None, "--min-pe", help="Override max forward P/E threshold."
+    max_pe: float = typer.Option(
+        None, "--max-pe", help="Override the forward P/E ceiling for the value filter."
     ),
     max_peg: float = typer.Option(None, "--max-peg", help="Override max PEG."),
     min_rev_growth: float = typer.Option(
@@ -765,8 +765,8 @@ def screen(
         enabled = [name for name, flag in requested if flag]
 
     overrides: dict[str, object] = {}
-    if min_pe is not None:
-        overrides["max_forward_pe"] = min_pe
+    if max_pe is not None:
+        overrides["max_forward_pe"] = max_pe
     if max_peg is not None:
         overrides["max_peg"] = max_peg
     if min_rev_growth is not None:
