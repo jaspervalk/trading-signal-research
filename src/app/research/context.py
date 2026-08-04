@@ -14,8 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analysis.entry import build_dual_entry_zones
-from app.analysis.research import build_ticker_research_view
+from app.analysis.research import _resolve_metadata, build_ticker_research_view
 from app.analysis.schema import TickerResearchView
+from app.market.fundamentals import FundamentalsExtended, fetch_fundamentals_extended
+from app.market.peer_comparison import PeerComparison, fetch_peer_comparison
 from app.models import CLAIM_STATUS_ACCEPTED, Claim, Creator, Document, SourceChannel
 from app.research.exits import build_candidate_levels
 from app.research.schema import CandidateLevels
@@ -41,7 +43,12 @@ class ClaimSnippet:
 
 @dataclass
 class ResearchPacket:
-    """All inputs assembled for one ticker, one timestamp."""
+    """All inputs assembled for one ticker, one timestamp.
+
+    `fundamentals_extended` and `peer_comparison` are only populated for Deep
+    mode (gather(..., with_deep_extras=True)) — Quick mode keeps the packet
+    lean to keep its single-Haiku call inexpensive.
+    """
 
     ticker: str
     as_of: datetime
@@ -49,6 +56,9 @@ class ResearchPacket:
     candidate_levels: CandidateLevels
     recent_claims: list[ClaimSnippet] = field(default_factory=list)
     sources_used: list[str] = field(default_factory=list)
+    fundamentals_extended: FundamentalsExtended | None = None
+    peer_comparison: PeerComparison | None = None
+    company_name: str | None = None
 
 
 CLAIMS_LOOKBACK_DAYS = 30
@@ -61,12 +71,18 @@ def gather(
     session: Session,
     as_of: datetime | None = None,
     view: TickerResearchView | None = None,
+    with_deep_extras: bool = False,
 ) -> ResearchPacket:
     """Build a `ResearchPacket` for `ticker`.
 
     `view` is optional — pass an already-built `TickerResearchView` to avoid
     a redundant yfinance fetch. Otherwise this calls
     `build_ticker_research_view` itself.
+
+    `with_deep_extras=True` additionally fetches 3-year financials/cashflow/
+    balance-sheet via `fetch_fundamentals_extended` and curated peer-median
+    ratios via `fetch_peer_comparison`. Adds ~1-3s of yfinance fetches on
+    cold cache; only used by Deep mode's Fundamental lens.
     """
     ticker = ticker.upper()
     if as_of is None:
@@ -98,6 +114,37 @@ def gather(
     sources = ["technicals"]
     if recent_claims:
         sources.append("claims")
+
+    fundamentals_extended: FundamentalsExtended | None = None
+    peer_comparison: PeerComparison | None = None
+    company_name: str | None = None
+
+    if with_deep_extras:
+        try:
+            metadata = _resolve_metadata(ticker)
+        except Exception:
+            metadata = {}
+        company_name = metadata.get("longName") or metadata.get("shortName") or None
+        try:
+            fundamentals_extended = fetch_fundamentals_extended(
+                ticker, market_cap=view.valuation.market_cap
+            )
+            if fundamentals_extended.sources_used:
+                sources.append("fundamentals_extended")
+        except Exception:  # pragma: no cover — defensive
+            fundamentals_extended = None
+        try:
+            peer_comparison = fetch_peer_comparison(
+                ticker,
+                sector=view.valuation.sector,
+                industry=view.valuation.industry,
+                target_metadata=metadata,
+            )
+            if peer_comparison.peer_set_available:
+                sources.append("peer_comparison")
+        except Exception:  # pragma: no cover — defensive
+            peer_comparison = None
+
     return ResearchPacket(
         ticker=ticker,
         as_of=as_of,
@@ -105,6 +152,9 @@ def gather(
         candidate_levels=candidate_levels,
         recent_claims=recent_claims,
         sources_used=sources,
+        fundamentals_extended=fundamentals_extended,
+        peer_comparison=peer_comparison,
+        company_name=company_name,
     )
 
 

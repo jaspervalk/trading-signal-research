@@ -221,7 +221,9 @@ def run_deep_research(
             return cached
 
     try:
-        packet = plan_context.gather(ticker=ticker, session=session)
+        packet = plan_context.gather(
+            ticker=ticker, session=session, with_deep_extras=True
+        )
     except Exception as e:
         raise HTTPException(
             status_code=502, detail=f"Failed to gather research packet: {e}"
