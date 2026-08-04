@@ -183,6 +183,177 @@ def run_agent(
     )
 
 
+def run_agent_with_web_search(
+    *,
+    agent_name: str,
+    system_prompt: str,
+    user_message: str,
+    web_search_max_uses: int = 1,
+    client: Anthropic | None = None,
+    model: str = "claude-haiku-4-5-20251001",
+    max_tokens: int = 2500,
+) -> AgentResult:
+    """Same contract as `run_agent`, but adds the Anthropic `web_search`
+    server-tool to the tools list.
+
+    Anthropic's web_search is a server-tool: the model calls it, Anthropic
+    executes it, and the model sees the results in the same turn. We do NOT
+    force submit_lens via tool_choice — instead we set `tool_choice="auto"`
+    and instruct in the system prompt that the model must call web_search
+    once (max_uses=1) then submit_lens. Web search currently costs $10 per
+    1000 searches (~$0.01 per search).
+
+    Returns the same `AgentResult` shape. If the model never emits a
+    submit_lens tool_use, returns an error result (lens=None) and the
+    orchestrator carries on with the remaining lenses.
+    """
+    if agent_name not in LENS_NAMES:
+        raise ValueError(f"Unknown agent_name {agent_name}; expected one of {LENS_NAMES}")
+
+    client = _client_or_default(client)
+    tool_name = "submit_lens"
+    tools: list[dict[str, Any]] = [
+        {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": int(web_search_max_uses),
+        },
+        {
+            "name": tool_name,
+            "description": (
+                f"Submit your {agent_name} lens read on the trade setup. "
+                "Call this AFTER any web_search call so you can cite findings."
+            ),
+            "input_schema": _lens_tool_input_schema(agent_name),
+        },
+    ]
+
+    started = time.monotonic()
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            tools=tools,
+            tool_choice={"type": "auto"},
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except Exception as e:
+        log.warning(
+            "research.deep.agent_call_failed",
+            agent=agent_name,
+            error=str(e),
+            web_search=True,
+        )
+        return AgentResult(
+            agent_name=agent_name,
+            lens=None,
+            cost_usd=0.0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error=str(e),
+        )
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    token_cost = _compute_cost(
+        response, price_in=HAIKU_PRICE_IN, price_out=HAIKU_PRICE_OUT
+    )
+    n_searches, search_cost = _extract_web_search_usage(response)
+    cost = token_cost + search_cost
+
+    raw = _extract_tool_input(response, tool_name=tool_name)
+    search_citations = _extract_search_citations(response)
+
+    if raw is None:
+        return AgentResult(
+            agent_name=agent_name,
+            lens=None,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+            raw={"n_searches": n_searches, "citations": search_citations},
+            error="no submit_lens tool_use block in response",
+        )
+
+    try:
+        lens = LensView(
+            name=agent_name,
+            direction=str(raw.get("direction", "neutral")),
+            conviction=str(raw.get("conviction", "low")),
+            summary=str(raw.get("summary", "")),
+            points=[str(p) for p in raw.get("points", [])],
+        )
+    except Exception as e:
+        log.warning(
+            "research.deep.lens_parse_failed", agent=agent_name, error=str(e)
+        )
+        return AgentResult(
+            agent_name=agent_name,
+            lens=None,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+            raw=raw,
+            error=f"lens parse failed: {e}",
+        )
+
+    return AgentResult(
+        agent_name=agent_name,
+        lens=lens,
+        cost_usd=cost,
+        duration_ms=duration_ms,
+        raw={
+            "lens_input": raw,
+            "n_searches": n_searches,
+            "citations": search_citations,
+        },
+    )
+
+
+_WEB_SEARCH_PRICE_PER_SEARCH = 0.01  # $10 / 1000
+
+
+def _extract_web_search_usage(response: Any) -> tuple[int, float]:
+    """Count web_search invocations and price them.
+
+    Anthropic exposes `usage.server_tool_use.web_search_requests` on newer
+    SDK versions. Older SDKs may not — fall back to counting `server_tool_use`
+    blocks in the content list.
+    """
+    usage = getattr(response, "usage", None)
+    requests = 0
+    if usage is not None:
+        stu = getattr(usage, "server_tool_use", None)
+        if stu is not None:
+            requests = int(getattr(stu, "web_search_requests", 0) or 0)
+    if requests == 0:
+        for block in getattr(response, "content", []) or []:
+            if getattr(block, "type", None) == "server_tool_use":
+                if getattr(block, "name", "") == "web_search":
+                    requests += 1
+    return requests, requests * _WEB_SEARCH_PRICE_PER_SEARCH
+
+
+def _extract_search_citations(response: Any) -> list[dict[str, str]]:
+    """Pull cited URLs/titles from the response for the audit trail."""
+    out: list[dict[str, str]] = []
+    for block in getattr(response, "content", []) or []:
+        # web_search_tool_result blocks carry the actual search payload.
+        if getattr(block, "type", None) == "web_search_tool_result":
+            content = getattr(block, "content", None) or []
+            for item in content:
+                url = getattr(item, "url", None) or ""
+                title = getattr(item, "title", None) or ""
+                if url:
+                    out.append({"title": title, "url": url})
+        # Citations may also be attached to text blocks as `block.citations`.
+        if getattr(block, "type", None) == "text":
+            cites = getattr(block, "citations", None) or []
+            for c in cites:
+                url = getattr(c, "url", None) or ""
+                title = getattr(c, "title", None) or ""
+                if url:
+                    out.append({"title": title, "url": url})
+    return out
+
+
 def run_agents_parallel(
     runners: list[Callable[[], AgentResult]],
     *,
@@ -379,6 +550,7 @@ __all__ = [
     "_format_other_lenses",
     "_revision_tool_input_schema",
     "run_agent",
+    "run_agent_with_web_search",
     "run_agents_parallel",
     "run_revision",
 ]

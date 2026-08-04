@@ -61,6 +61,8 @@ class DeepResearchSettings(BaseModel):
     """Deep-mode (multi-agent) entry/exit research tunables."""
 
     cross_lens_round: bool = False  # Phase 2: round-2 debate; cost +~$0.02/run
+    sentiment_web_search: bool = True  # Sentiment-Macro: 1 web_search/run (+~$0.01)
+    sentiment_web_search_max_uses: int = 1
 
 
 class ResearchSettings(BaseModel):
