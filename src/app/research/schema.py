@@ -12,7 +12,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _wrap_bare_string(v):
+    """Pydantic 'before' validator: wrap a bare string into a single-element
+    list. Without this, `list[str]` fields silently accept a bare `str` and
+    iterate it into chars (e.g. "hi" → ['h','i']). Real bug observed in the
+    2026-05-28 live batch (HIMS bull_case got 1746 char-entries).
+    """
+    if isinstance(v, str):
+        return [v]
+    return v
 
 # Vocabulary kept small and string-typed so the JSON shape is frontend-agnostic.
 PLAN_MODES = ("quick", "deep")
@@ -99,6 +110,10 @@ class LensView(BaseModel):
     revised_summary: str | None = None
     revised_points: list[str] = Field(default_factory=list)
     responded_to: list[str] = Field(default_factory=list)  # lens names this analyst engaged with
+
+    _wrap_points = field_validator("points", "revised_points", "responded_to", mode="before")(
+        _wrap_bare_string
+    )
 
 
 @dataclass
@@ -232,6 +247,10 @@ class EntryExitPlan(BaseModel):
         "Research output. Decision support, not investment advice. "
         "The user evaluates and pulls the trigger; this system does not execute orders."
     )
+
+    _wrap_prose = field_validator(
+        "bull_case", "bear_case", "key_risks", "sources_used", mode="before"
+    )(_wrap_bare_string)
 
 
 RANKS = ("high", "medium", "low", "skip")

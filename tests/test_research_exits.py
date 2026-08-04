@@ -161,30 +161,34 @@ def test_runner_exits_sorted_by_low():
 
 
 def test_invalidations_aggregate_from_entries_and_levels():
+    # Both entry refs are below the pullback entry low (97.0) — they all
+    # survive the "must be < min(entry.low)" filter added in Bug 3.
     breakout = EntryZoneCandidate(
         available=True,
         candidate_research_zone_low=110.0,
         candidate_research_zone_high=111.0,
-        invalidation_reference=104.0,
+        invalidation_reference=96.0,
     )
     pullback = EntryZoneCandidate(
         available=True,
-        candidate_research_zone_low=98.0,
+        candidate_research_zone_low=97.0,
         candidate_research_zone_high=100.0,
         invalidation_reference=92.0,
     )
     cl = build_candidate_levels(
         indicators=_indicators(atr=2.0),
-        levels=_levels(nearest_support=95.0, base_low=80.0),
+        levels=_levels(nearest_support=94.0, base_low=80.0),
         market=_market(last=100.0),
         breakout_entry=breakout,
         pullback_entry=pullback,
     )
     # Entries' invalidation refs + nearest_support + (base_low - 0.5*ATR) = 79.0
-    assert 104.0 in cl.invalidation_candidates
+    assert 96.0 in cl.invalidation_candidates
     assert 92.0 in cl.invalidation_candidates
-    assert 95.0 in cl.invalidation_candidates
+    assert 94.0 in cl.invalidation_candidates
     assert 79.0 in cl.invalidation_candidates
+    # And the new filter contract: all are strictly below the lower entry low.
+    assert all(x < 97.0 for x in cl.invalidation_candidates)
 
 
 def test_invalidations_dedupe():
@@ -275,3 +279,150 @@ def test_no_levels_yields_no_primaries():
     )
     assert cl.primary_exit_candidates == []
     assert cl.invalidation_candidates == []
+
+
+# ---------------------------------------------------------------------------
+# Bug 3 regression — stop-inside-entry filtering + degenerate band guard
+#
+# Real cases observed in the 2026-05-28 batch:
+# - BE Quick: entry 218.50-273.77, stop 249.10 (INSIDE entry band)
+# - HLIT Quick: entry 11.01-13.12, stop 11.98 (INSIDE entry band)
+# - IREN Deep: entry 46.92-54.47, stop 59.15 (ABOVE entry high)
+# - NBIS Deep: entry 154.55-190.50, stop 190.75 (just ABOVE entry high)
+#
+# Root cause: invalidation_candidates appended levels.nearest_support and
+# entry-derived stops without checking they sit BELOW the active entry low.
+
+
+def test_invalidation_candidates_drop_values_inside_entry_band():
+    """nearest_support inside the entry band must be filtered out — a long
+    plan cannot have a stop inside the entry zone."""
+    breakout = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=110.0,
+        candidate_research_zone_high=112.0,
+        invalidation_reference=105.0,  # valid, below entry low
+    )
+    cl = build_candidate_levels(
+        indicators=_indicators(atr=2.0),
+        levels=_levels(nearest_support=111.0, base_low=None),  # 111.0 is INSIDE band
+        market=_market(last=109.0),
+        breakout_entry=breakout,
+        pullback_entry=None,
+    )
+    assert all(x < 110.0 for x in cl.invalidation_candidates), (
+        f"All invalidations must be < entry.low (110.0); got {cl.invalidation_candidates}"
+    )
+    assert 111.0 not in cl.invalidation_candidates
+
+
+def test_invalidation_candidates_drop_values_above_entry_high():
+    """A value above the entry high is even more broken — must be filtered."""
+    breakout = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=46.92,
+        candidate_research_zone_high=54.47,
+        invalidation_reference=41.13,
+    )
+    cl = build_candidate_levels(
+        indicators=_indicators(atr=5.79),
+        levels=_levels(nearest_support=59.15, base_low=None),  # 59.15 > 54.47
+        market=_market(last=50.0),
+        breakout_entry=breakout,
+        pullback_entry=None,
+    )
+    assert 59.15 not in cl.invalidation_candidates
+    assert all(x < 46.92 for x in cl.invalidation_candidates), (
+        f"All invalidations must be < entry.low (46.92); got {cl.invalidation_candidates}"
+    )
+
+
+def test_invalidation_candidates_use_strictest_entry_when_both_present():
+    """When both breakout and pullback are active, invalidations must be
+    below the LOWER of the two (otherwise it's inside one of them)."""
+    breakout = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=110.0,
+        candidate_research_zone_high=112.0,
+        invalidation_reference=104.0,
+    )
+    pullback = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=98.0,
+        candidate_research_zone_high=100.0,
+        invalidation_reference=92.0,
+    )
+    cl = build_candidate_levels(
+        indicators=_indicators(atr=2.0),
+        levels=_levels(nearest_support=99.0, base_low=None),  # 99 inside pullback band
+        market=_market(last=100.0),
+        breakout_entry=breakout,
+        pullback_entry=pullback,
+    )
+    assert all(x < 98.0 for x in cl.invalidation_candidates), (
+        f"All invalidations must be < min(entry.low) (98.0); got {cl.invalidation_candidates}"
+    )
+
+
+def test_degenerate_wide_pullback_band_is_dropped():
+    """A pullback band wider than 5×ATR is unactionable (EMA21/SMA50 diverge
+    too much for a meaningful pullback to traverse). Drop it. Real BE case:
+    band 218.50-273.77 (55pt) with ATR 26.84 → ratio 2.05× ATR. Use a wider
+    test case here to make the test deterministic."""
+    pullback = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=218.50,
+        candidate_research_zone_high=273.77,  # 55.27pt
+        invalidation_reference=200.0,
+    )
+    cl = build_candidate_levels(
+        indicators=_indicators(atr=5.0),  # 55.27 / 5.0 = 11×ATR — way too wide
+        levels=_levels(),
+        market=_market(last=250.0),
+        breakout_entry=None,
+        pullback_entry=pullback,
+    )
+    assert cl.pullback_entry is None, (
+        "Pullback band > 5×ATR is unactionable and must be filtered."
+    )
+
+
+def test_degenerate_zero_width_pullback_band_is_dropped():
+    """A pullback band with effectively zero width (EMA21 ≈ SMA50 to the
+    point of no range) is also unactionable."""
+    pullback = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=100.00,
+        candidate_research_zone_high=100.01,  # 1¢ width
+        invalidation_reference=95.0,
+    )
+    cl = build_candidate_levels(
+        indicators=_indicators(atr=2.0),
+        levels=_levels(),
+        market=_market(last=100.0),
+        breakout_entry=None,
+        pullback_entry=pullback,
+    )
+    assert cl.pullback_entry is None, (
+        "Pullback band of near-zero width is unactionable and must be filtered."
+    )
+
+
+def test_normal_pullback_band_within_atr_bounds_is_kept():
+    """Sanity: a reasonable band (well within the [0.05, 5.0] × ATR range)
+    survives the degenerate-band filter."""
+    pullback = EntryZoneCandidate(
+        available=True,
+        candidate_research_zone_low=98.0,
+        candidate_research_zone_high=100.0,  # 2pt, ATR 2.0 → 1.0× ATR
+        invalidation_reference=92.0,
+    )
+    cl = build_candidate_levels(
+        indicators=_indicators(atr=2.0),
+        levels=_levels(),
+        market=_market(last=99.0),
+        breakout_entry=None,
+        pullback_entry=pullback,
+    )
+    assert cl.pullback_entry is not None
+    assert cl.pullback_entry.low == 98.0

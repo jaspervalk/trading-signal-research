@@ -17,6 +17,8 @@ Hallucination guards:
 
 from __future__ import annotations
 
+import json as _json
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -46,6 +48,13 @@ log = get_logger(__name__)
 # Anthropic Haiku 4.5 pricing in USD per million tokens.
 HAIKU_PRICE_IN = 1.0
 HAIKU_PRICE_OUT = 5.0
+
+# Output-token budget for the Quick call. The 4-lens panel + bull/bear/risks +
+# rationales reliably consumes a lot of output; the original 4000 caused 100%
+# truncation in the 2026-05-28 batch (lens block, last in the JSON, was being
+# chopped off). 8000 still hit the cap exactly. 16000 gives real headroom on
+# Haiku 4.5 (which supports up to 64K output). Bug 1.
+DEFAULT_MAX_TOKENS = 16000
 
 QUICK_TOOL_NAME = "submit_entry_exit_plan"
 QUICK_TOOL_DESCRIPTION = (
@@ -161,7 +170,7 @@ def quick_tool_input_schema() -> dict[str, Any]:
                 "type": "array",
                 "items": {"type": "string"},
                 "minItems": 1,
-                "maxItems": 4,
+                "maxItems": 3,
             },
         },
     }
@@ -193,9 +202,9 @@ def quick_tool_input_schema() -> dict[str, Any]:
             "invalidation_rationale": {"type": "string"},
             "confidence": {"type": "string", "enum": list(CONFIDENCE)},
             "timeframe": {"type": "string", "enum": list(TIMEFRAMES)},
-            "bull_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6},
-            "bear_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6},
-            "key_risks": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6},
+            "bull_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 4},
+            "bear_case": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 4},
+            "key_risks": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 4},
             "lenses": {"type": "array", "items": lens, "minItems": 4, "maxItems": 4},
             "note": {"type": "string"},
         },
@@ -219,7 +228,7 @@ def run(
     *,
     client: Anthropic | None = None,
     model: str = "claude-haiku-4-5-20251001",
-    max_tokens: int = 4000,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> QuickResult:
     """Run quick research. Returns the plan + raw model response.
 
@@ -254,7 +263,20 @@ def run(
     )
     duration_ms = int((time.monotonic() - started) * 1000)
 
+    # Bug 1 (2026-05-28): max_tokens truncation silently dropped the lens
+    # panel on every live run. Surface stop_reason='max_tokens' as a
+    # structured warning so future truncations are observable.
+    stop_reason = getattr(response, "stop_reason", None)
+    if stop_reason == "max_tokens":
+        log.warning(
+            "research.quick.response_truncated_by_max_tokens",
+            ticker=packet.ticker,
+            max_tokens=max_tokens,
+            output_tokens=getattr(getattr(response, "usage", None), "output_tokens", None),
+        )
+
     raw_input = _extract_tool_input(response)
+    raw_input = _recover_misformatted_response(raw_input)
     cost = _compute_cost(response)
     plan = _build_plan(
         packet=packet,
@@ -436,6 +458,79 @@ def _extract_tool_input(response: Any) -> dict[str, Any]:
     raise RuntimeError(f"No {QUICK_TOOL_NAME} tool_use block in response.")
 
 
+# Pattern: when Haiku misbehaves it stuffs the rest of the schema into
+# bull_case[0] using `<parameter name="...">...</parameter>` markup that
+# looks like Anthropic's old XML tool format. The bull items themselves are
+# `<item>…</item>` blocks, and `lenses` is a literal JSON array embedded
+# inside the parameter block.
+_XML_PARAM_PAT = re.compile(
+    r'<parameter\s+name="(?P<name>[^"]+)"\s*>(?P<body>.*?)(?=<parameter\s+name=|$)',
+    re.DOTALL,
+)
+_XML_ITEM_PAT = re.compile(r"<item>(.*?)</item>", re.DOTALL)
+
+
+def _recover_misformatted_response(raw: dict[str, Any]) -> dict[str, Any]:
+    """Detect + repair the Haiku XML-in-bull_case-string regression.
+
+    When the model emits its full structured output as XML markup stuffed
+    into the bull_case slot (either as a bare string or a single-element
+    list, with bear_case/key_risks/lenses left empty), parse the markup
+    back into the proper JSON fields. Well-formed responses pass through
+    unchanged. Bug 1 (2026-05-28).
+    """
+    bc = raw.get("bull_case")
+    # Bare string OR single-element list — both shapes show up in the wild.
+    if isinstance(bc, str):
+        blob = bc
+    elif isinstance(bc, list) and bc and isinstance(bc[0], str):
+        blob = bc[0]
+    else:
+        return raw
+    if "<parameter name=" not in blob and "</bull_case>" not in blob:
+        return raw  # well-formed; no recovery needed
+
+    log.warning("research.quick.recovering_xml_embedded_response")
+
+    # Extract bull_case items from the prefix before the first <parameter>.
+    bull_prefix = blob.split("<parameter", 1)[0]
+    # Strip a trailing </bull_case> if present.
+    bull_prefix = bull_prefix.replace("</bull_case>", "")
+    bull_items = [m.strip() for m in _XML_ITEM_PAT.findall(bull_prefix) if m.strip()]
+
+    # Extract each named parameter block.
+    fixed = dict(raw)
+    fixed["bull_case"] = bull_items if bull_items else bc
+
+    for m in _XML_PARAM_PAT.finditer(blob):
+        name = m.group("name")
+        body = m.group("body")
+        # Trim trailing </parameter> (the regex stops at the next <parameter
+        # or EOF; the closing tag from the current block sits inside `body`).
+        body = body.rstrip()
+        if body.endswith("</parameter>"):
+            body = body[: -len("</parameter>")]
+
+        if name == "lenses":
+            # Body should be a JSON array. Find the first '[' and matching ']'.
+            start = body.find("[")
+            end = body.rfind("]")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    parsed = _json.loads(body[start : end + 1])
+                    if isinstance(parsed, list):
+                        fixed["lenses"] = parsed
+                except _json.JSONDecodeError as e:
+                    log.warning("research.quick.lens_json_recovery_failed", error=str(e))
+        else:
+            # bear_case / key_risks: <item>...</item> list.
+            items = [m.strip() for m in _XML_ITEM_PAT.findall(body) if m.strip()]
+            if items:
+                fixed[name] = items
+
+    return fixed
+
+
 def _compute_cost(response: Any) -> float:
     usage = getattr(response, "usage", None)
     if usage is None:
@@ -463,7 +558,9 @@ def _build_plan(
         if picks.runner_index is not None
         else None
     )
-    invalidation = float(cl.invalidation_candidates[picks.invalidation_index])
+    invalidation = _resolve_invalidation(
+        cl=cl, picks=picks, entry_zone=entry_zone
+    )
 
     confidence = _bound_confidence(
         raw_confidence=raw["confidence"],
@@ -485,8 +582,8 @@ def _build_plan(
     note = AgentNote(
         agent="quick",
         confidence=confidence,
-        bull_points=list(raw.get("bull_case", [])),
-        bear_points=list(raw.get("bear_case", [])),
+        bull_points=_as_list(raw.get("bull_case", [])),
+        bear_points=_as_list(raw.get("bear_case", [])),
         note=raw.get("note", ""),
     )
 
@@ -511,9 +608,9 @@ def _build_plan(
         r_r_distribution=distribution,
         confidence=confidence,
         timeframe=raw["timeframe"],
-        bull_case=list(raw.get("bull_case", [])),
-        bear_case=list(raw.get("bear_case", [])),
-        key_risks=list(raw.get("key_risks", [])),
+        bull_case=raw.get("bull_case", []),
+        bear_case=raw.get("bear_case", []),
+        key_risks=raw.get("key_risks", []),
         lenses=lenses,
         mode="quick",
         cost_usd=round(cost_usd, 6),
@@ -569,6 +666,37 @@ def _clamp_index(value: int, n: int) -> int:
     return max(0, min(int(value), n - 1))
 
 
+# Post-LLM snap: even if exits.py filters degenerate invalidations, the LLM
+# could still receive a list with edge-case values. Belt-and-suspenders: at
+# the resolver boundary, verify the picked stop sits strictly below entry.low
+# (long-side); if not, snap to entry.low - 0.75×ATR. Bug 3 2026-05-28.
+SNAP_ATR_FRACTION = 0.75
+
+
+def _resolve_invalidation(
+    *, cl: CandidateLevels, picks: Picks, entry_zone: ZoneBand
+) -> float:
+    """Return the LLM's picked invalidation, snapped if it's not strictly
+    below entry_zone.low. Falls back to a computed default when no usable
+    candidate exists (all candidates were >= entry.low).
+    """
+    candidates = cl.invalidation_candidates
+    if candidates:
+        raw_pick = float(candidates[picks.invalidation_index])
+        if raw_pick < entry_zone.low:
+            return raw_pick
+        log.warning(
+            "research.invalidation_snap_applied",
+            raw_pick=raw_pick,
+            entry_low=entry_zone.low,
+            atr=cl.atr_14,
+        )
+    # No usable pick — snap to a safe default below entry.low.
+    if cl.atr_14 is not None and cl.atr_14 > 0:
+        return float(entry_zone.low - SNAP_ATR_FRACTION * cl.atr_14)
+    return float(entry_zone.low * 0.95)
+
+
 def _build_lenses(raw: list[dict[str, Any]] | None) -> list[LensView]:
     """Validate and build LensView list. Tolerates a missing lenses block
     by returning an empty list (lets older / Phase 2 tests pass without
@@ -585,18 +713,31 @@ def _build_lenses(raw: list[dict[str, Any]] | None) -> list[LensView]:
     out: list[LensView] = []
     for entry in raw:
         try:
+            # Pass `points` raw — LensView's field_validator wraps a bare
+            # string into [string] (Bug 2 regression guard).
             out.append(
                 LensView(
                     name=str(entry.get("name", "")),
                     direction=str(entry.get("direction", "neutral")),
                     conviction=str(entry.get("conviction", "low")),
                     summary=str(entry.get("summary", "")),
-                    points=[str(p) for p in entry.get("points", [])],
+                    points=entry.get("points", []),
                 )
             )
         except Exception as e:  # pragma: no cover — schema validates upstream
             log.warning("research.quick.lens_parse_failed", error=str(e), entry=entry)
     return out
+
+
+def _as_list(value: Any) -> list[str]:
+    """Wrap a bare string into [string]; pass lists through. Used for
+    AgentNote fields that aren't backed by Pydantic validators.
+    """
+    if isinstance(value, str):
+        return [value]
+    if value is None:
+        return []
+    return [str(v) for v in value]
 
 
 def _bound_confidence(*, raw_confidence: str, rubric_confidence: str) -> str:

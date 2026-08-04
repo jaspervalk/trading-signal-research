@@ -30,6 +30,13 @@ RUNNER_OFFSET_ATR = 1.5
 FIB_PRIMARY = 1.272
 FIB_RUNNER = 1.618
 
+# Degenerate-band thresholds (Bug 3, 2026-05-28). A pullback band built from
+# 21-EMA / 50-SMA is unactionable when the two anchors diverge too far (BE,
+# HLIT in the live batch) or when they collapse to ~0 width (no actual
+# pullback range to trade). Both extremes get dropped at the boundary.
+MAX_PULLBACK_BAND_ATR_MULTIPLE = 5.0  # band > 5×ATR → not a realistic pullback path
+MIN_PULLBACK_BAND_ATR_MULTIPLE = 0.05  # band < 5% of ATR → no range to enter
+
 
 def build_candidate_levels(
     *,
@@ -55,19 +62,25 @@ def build_candidate_levels(
     )
 
     if breakout_entry is not None and breakout_entry.available:
-        candidates.breakout_entry = ZoneBand(
-            low=breakout_entry.candidate_research_zone_low or 0.0,
-            high=breakout_entry.candidate_research_zone_high or 0.0,
-            method="63-bar high + 0.5×ATR (breakout)",
-            rationale="Breakout trigger band from entry.py.",
-        )
+        lo = breakout_entry.candidate_research_zone_low or 0.0
+        hi = breakout_entry.candidate_research_zone_high or 0.0
+        if not _is_degenerate_band(lo, hi, atr):
+            candidates.breakout_entry = ZoneBand(
+                low=lo,
+                high=hi,
+                method="63-bar high + 0.5×ATR (breakout)",
+                rationale="Breakout trigger band from entry.py.",
+            )
     if pullback_entry is not None and pullback_entry.available:
-        candidates.pullback_entry = ZoneBand(
-            low=pullback_entry.candidate_research_zone_low or 0.0,
-            high=pullback_entry.candidate_research_zone_high or 0.0,
-            method="21-EMA / 50-SMA band (pullback)",
-            rationale="Pullback research zone from entry.py.",
-        )
+        lo = pullback_entry.candidate_research_zone_low or 0.0
+        hi = pullback_entry.candidate_research_zone_high or 0.0
+        if not _is_degenerate_band(lo, hi, atr):
+            candidates.pullback_entry = ZoneBand(
+                low=lo,
+                high=hi,
+                method="21-EMA / 50-SMA band (pullback)",
+                rationale="Pullback research zone from entry.py.",
+            )
 
     candidates.primary_exit_candidates = _build_primary_exits(
         levels=levels, atr=atr, last_close=last_close
@@ -83,8 +96,40 @@ def build_candidate_levels(
         atr=atr,
         breakout_entry=breakout_entry,
         pullback_entry=pullback_entry,
+        active_entry_lows=_active_entry_lows(candidates),
     )
     return candidates
+
+
+def _is_degenerate_band(low: float, high: float, atr: float | None) -> bool:
+    """A pullback / breakout band is unactionable when its width is
+    pathological vs ATR. Both extremes catch real bugs from 2026-05-28:
+    - Very wide (BE band 11×ATR, HLIT 19% of price): not a realistic path.
+    - Near-zero: no range to enter on.
+    Returns False if ATR is missing (can't decide; let the caller through).
+    """
+    if atr is None or atr <= 0:
+        return False
+    width = high - low
+    if width <= 0:
+        return True
+    if width < MIN_PULLBACK_BAND_ATR_MULTIPLE * atr:
+        return True
+    if width > MAX_PULLBACK_BAND_ATR_MULTIPLE * atr:
+        return True
+    return False
+
+
+def _active_entry_lows(candidates: CandidateLevels) -> list[float]:
+    """Lows of the active (non-degenerate) entry zones — used to filter
+    invalidation candidates so a long-side stop can't land inside or above
+    any active entry zone."""
+    out: list[float] = []
+    if candidates.breakout_entry is not None:
+        out.append(candidates.breakout_entry.low)
+    if candidates.pullback_entry is not None:
+        out.append(candidates.pullback_entry.low)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +234,7 @@ def _build_invalidations(
     atr: float | None,
     breakout_entry: EntryZoneCandidate | None,
     pullback_entry: EntryZoneCandidate | None,
+    active_entry_lows: list[float] | None = None,
 ) -> list[float]:
     out: list[float] = []
     for entry in (breakout_entry, pullback_entry):
@@ -202,6 +248,13 @@ def _build_invalidations(
         out.append(levels.nearest_support)
     if levels.base_low is not None and (atr is not None and atr > 0):
         out.append(levels.base_low - 0.5 * atr)
+    # Filter: a long-side invalidation must sit strictly BELOW every active
+    # entry low. Anything at-or-above an entry low is structurally broken
+    # for a long (stop would be inside or above the entry zone). Bug 3
+    # 2026-05-28 — BE/HLIT/IREN/NBIS all violated this.
+    if active_entry_lows:
+        min_entry_low = min(active_entry_lows)
+        out = [x for x in out if x < min_entry_low]
     # Deduplicate while preserving order.
     seen: set[float] = set()
     unique: list[float] = []

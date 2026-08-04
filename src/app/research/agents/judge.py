@@ -305,6 +305,18 @@ def _fmt_pct(value) -> str:
     return f"{value * 100:+.2f}%"
 
 
+def _as_list(value: Any) -> list[str]:
+    """Wrap a bare string into [string]; pass lists through. Defends against
+    the same str→list[char] artifact that the schema's field_validator
+    catches; used here for AgentNote fields that aren't Pydantic-validated.
+    """
+    if isinstance(value, str):
+        return [value]
+    if value is None:
+        return []
+    return [str(v) for v in value]
+
+
 # ---------------------------------------------------------------------------
 # Plan assembly — categorical picks resolved against deterministic candidates.
 
@@ -328,7 +340,10 @@ def _build_plan(
         if picks.runner_index is not None
         else None
     )
-    invalidation = float(cl.invalidation_candidates[picks.invalidation_index])
+    # Bug 3 (2026-05-28): import the same post-LLM snap used by Quick mode so
+    # Deep's judge can't return a long-side stop inside or above the entry zone.
+    from app.research.quick import _resolve_invalidation
+    invalidation = _resolve_invalidation(cl=cl, picks=picks, entry_zone=entry_zone)
 
     confidence = _bound_confidence(
         raw_confidence=raw["confidence"],
@@ -374,8 +389,8 @@ def _build_plan(
         AgentNote(
             agent="judge",
             confidence=confidence,
-            bull_points=list(raw.get("bull_case", [])),
-            bear_points=list(raw.get("bear_case", [])),
+            bull_points=_as_list(raw.get("bull_case", [])),
+            bear_points=_as_list(raw.get("bear_case", [])),
             note=raw.get("note", ""),
         )
     )
@@ -401,9 +416,9 @@ def _build_plan(
         r_r_distribution=distribution,
         confidence=confidence,
         timeframe=raw["timeframe"],
-        bull_case=list(raw.get("bull_case", [])),
-        bear_case=list(raw.get("bear_case", [])),
-        key_risks=list(raw.get("key_risks", [])),
+        bull_case=raw.get("bull_case", []),
+        bear_case=raw.get("bear_case", []),
+        key_risks=raw.get("key_risks", []),
         lenses=lenses,
         mode="deep",
         cost_usd=round(cost_usd, 6),

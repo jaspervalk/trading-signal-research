@@ -176,7 +176,11 @@ class _FakeClient:
 
     Records kwargs from each `messages.create()` call:
     - `last_kwargs` — most recent call's kwargs (any tool)
-    - `kwargs_by_tool` — kwargs keyed by the tool name in the call
+    - `kwargs_by_tool` — kwargs keyed by the matched tool name
+
+    Picks the first tool in the call's `tools=` list whose name is present
+    in `mapping`. This lets the sentiment-macro agent attach a web_search
+    server-tool alongside `submit_lens` without confusing the fake.
     """
 
     def __init__(self, mapping: dict[str, dict[str, Any]]):
@@ -189,15 +193,23 @@ class _FakeClient:
                 inner.parent = parent
 
             def create(inner, **kwargs):
-                tool = kwargs["tools"][0]["name"]
+                tools = kwargs.get("tools", []) or []
+                matched: str | None = None
+                for t in tools:
+                    name = t.get("name")
+                    if name and name in inner.parent._mapping:
+                        matched = name
+                        break
+                if matched is None and tools:
+                    matched = tools[0].get("name", "default")
                 inner.parent.last_kwargs = kwargs
-                inner.parent.kwargs_by_tool[tool] = kwargs
-                # The judge tool is named differently from the analyst tool;
-                # we look up by tool name. If unmapped, return a default lens.
-                raw = inner.parent._mapping.get(tool)
-                if raw is None:
-                    raw = inner.parent._mapping.get("default", {})
-                return _fake_response(tool_name=tool, raw=raw)
+                if matched is not None:
+                    inner.parent.kwargs_by_tool[matched] = kwargs
+                raw = (
+                    inner.parent._mapping.get(matched or "")
+                    or inner.parent._mapping.get("default", {})
+                )
+                return _fake_response(tool_name=matched or "submit_lens", raw=raw)
 
         self.messages = _Messages(self)
 
