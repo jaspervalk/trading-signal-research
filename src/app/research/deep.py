@@ -179,11 +179,20 @@ def run(
         log.warning("research.deep.lens_recording_failed", error=str(e))
 
     # 2. Sonnet judge synthesises the lenses + picks final levels.
+    from app.analysis.digest import build_panel_digest
+
+    digest = build_panel_digest(
+        packet.view,
+        fundamentals=packet.fundamentals_extended,
+        peers=packet.peer_comparison,
+    )
+
     judge_result = run_judge(
         packet=packet,
         lenses=lenses,
         analyst_results=analyst_results,
         client=client,
+        digest=digest,
     )
 
     return DeepResult(

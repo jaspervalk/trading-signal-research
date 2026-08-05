@@ -28,6 +28,7 @@ from typing import Any
 
 from anthropic import Anthropic
 
+from app.analysis.digest import PanelDigest
 from app.analysis.schema import CONFIDENCE_LEVELS
 from app.config import load_env
 from app.logging import get_logger
@@ -94,6 +95,12 @@ Hard rules:
 5. NEVER use 'buy' / 'sell' / 'recommendation' / 'guarantee' / 'will'. Use \
    'research zone', 'consider', 'may'.
 6. RATIONALE on each pick should be ≤ 25 words.
+7. VALUATION. The user message carries a valuation block with explicit units.
+   Where it is present, reconcile it against the technical read: say plainly
+   whether the price already embeds the bull case. Cite the specific field
+   and number you are relying on (e.g. "forward_pe 41 vs sector norm"). Never
+   restate a number without naming its field. If the block says valuation is
+   unavailable, say so rather than inferring it.
 """
 
 
@@ -110,6 +117,9 @@ Snapshot:
 - last_close: {last_close}
 - ATR(14): {atr_14}
 - pct off 52w high / low: {pct_off_52w_high} / {pct_off_52w_low}
+
+Valuation (units stated per line; do not assume a convention):
+{valuation_block}
 
 CANDIDATE LEVELS (pick BY INDEX / KIND — the system resolves your picks):
 {candidate_levels_block}
@@ -196,6 +206,7 @@ def run_judge(
     client: Anthropic | None = None,
     model: str = "claude-sonnet-4-6",
     max_tokens: int = 3500,
+    digest: PanelDigest | None = None,
 ) -> JudgeResult:
     """Call Sonnet to synthesise. Returns a fully-built `EntryExitPlan`."""
     if client is None:
@@ -204,7 +215,7 @@ def run_judge(
             raise RuntimeError("ANTHROPIC_API_KEY not set; cannot run judge.")
         client = Anthropic(api_key=env.anthropic_api_key)
 
-    user_msg = _format_user_message(packet, lenses)
+    user_msg = _format_user_message(packet, lenses, digest=digest)
     started = time.monotonic()
     response = client.messages.create(
         model=model,
@@ -250,7 +261,12 @@ def run_judge(
 # Prompt formatting
 
 
-def _format_user_message(packet: ResearchPacket, lenses: list[LensView]) -> str:
+def _format_user_message(
+    packet: ResearchPacket,
+    lenses: list[LensView],
+    *,
+    digest: PanelDigest | None = None,
+) -> str:
     v = packet.view
     return USER_TEMPLATE.format(
         ticker=packet.ticker,
@@ -265,9 +281,28 @@ def _format_user_message(packet: ResearchPacket, lenses: list[LensView]) -> str:
         atr_14=_fmt(v.indicators.atr_14),
         pct_off_52w_high=_fmt_pct(v.market.pct_off_52w_high),
         pct_off_52w_low=_fmt_pct(v.market.pct_off_52w_low),
+        valuation_block=_valuation_block_for(digest),
         candidate_levels_block=_format_candidate_levels(packet),
         lenses_block=_format_lenses(lenses),
     )
+
+
+def _valuation_block_for(digest: PanelDigest | None) -> str:
+    """Render the digest's valuation measures, naming what was unavailable.
+
+    A reader that sees only present fields cannot tell a missing multiple
+    from a healthy one, so absent fields are listed explicitly.
+    """
+    if digest is None:
+        return "(valuation context not available for this run)"
+
+    block = digest.valuation_block()
+    absent = [
+        f.split(".", 1)[1] for f in digest.missing if f.startswith("valuation.")
+    ]
+    if absent:
+        block = f"{block}\n(unavailable, do not infer a value: {', '.join(absent)})"
+    return block
 
 
 def _format_candidate_levels(p: ResearchPacket) -> str:
