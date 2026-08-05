@@ -24,7 +24,16 @@ Screener → technicals/fundamentals → entry/exit research (Quick/Deep LLM, pe
 
 ### 2. Portfolio Manager — manual position/trade ledger
 
-The system of record for actual holdings. New tables: `Position`, `PortfolioTrade` (side/qty/price/date/fees — named to avoid collision with `backtest/metrics.Trade`), `CashFlow`. Entries are manual (no broker API exists to sync from). Portfolio state feeds back into Analysis as scan priority (held tickers get research attention by default) and invalidation alerts (an entry/exit plan moving against a held position surfaces a flag) — a one-way bridge from Portfolio into Analysis's scan/alerting, not a merge of the two data models.
+The system of record for actual holdings. **One** stored table: `portfolio_trades`
+(side/qty/price/currency/fees/traded_at/optional `eur_amount` — named to avoid
+collision with `backtest/metrics.Trade`). **Positions are derived, not stored**:
+folding the trade ledger chronologically with weighted-average cost is a pure
+function, so holdings can never drift from the history that produced them. This
+amends the original sketch of `Position` / `PortfolioTrade` / `CashFlow` tables —
+`Position` is computed, and `CashFlow` is deferred with dividends and cash
+balance (see the v1 scope in
+[the design spec](../superpowers/specs/2026-08-04-portfolio-manager-design.md)).
+Portfolio state feeds back into Analysis as scan priority (held tickers get research attention by default) and invalidation alerts (an entry/exit plan moving against a held position surfaces a flag) — a one-way bridge from Portfolio into Analysis's scan/alerting, not a merge of the two data models.
 
 ### 3. Creator strategies + per-call backtest: parked, not deleted
 
@@ -58,7 +67,7 @@ src/app/
 **Staged execution (not part of this ADR's commitment, tracked in the roadmap):**
 1. Plan 1 — stabilize and clean: commit the four dirty work threads, delete dead code/junk, real CI, this ADR.
 2. Plan 2 — Analysis consolidation: one `marketdata` client, one universe module (fixes `BRK-B`/`BRK.B`, kills duplicate `load_universe`), screener imports `analysis/indicators`, screener gets an API route + web page, ticker page/nav re-centered on quant with the creator rail collapsible.
-3. Plan 3 — Portfolio Manager: greenfield tables + migration, `tsr pf` CLI namespace, FastAPI `portfolio` router, `/portfolio` web page, the scan-priority/invalidation-alert bridge into Analysis.
+3. Plan 3 — Portfolio Manager: greenfield tables + migration, `tsr pf` CLI namespace, FastAPI `portfolio` router, `/portfolio` web page, the scan-priority/invalidation-alert bridge into Analysis. (**Shipped ahead of Plan 2 at the owner's request**, 2026-08-04.)
 4. Plan 4 — side-feature packaging + docs: creator pipeline behind a source-agnostic seam, `architecture.md` rewritten from scratch, CLAUDE.md/README refreshed, ops decision on reviving the daily cron.
 
 **Architectural:**

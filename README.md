@@ -86,6 +86,12 @@ tsr scan --tickers AAPL,NVDA,TSLA              # ad-hoc N-ticker scan
 
 # Strategy walk-forward (ADR 0007)
 tsr backtest-strategy mention_momentum --start 2025-09-01 --end 2025-12-01
+
+# Portfolio (manual trade ledger; quote prices ~15 minutes delayed)
+tsr pf add NVDA --side buy --qty 10 --price 145.20 --date 2026-07-15
+tsr pf list                  # positions with live P&L
+tsr pf trades                # raw ledger
+tsr pf rm 3                  # delete a mistaken entry
 ```
 
 The dashboard (Next.js, see [apps/web/](apps/web/)) is a separate process from `tsr`; it talks to the FastAPI in [apps/api/](apps/api/) which exposes `/tickers/{t}/research`, `/research/scan`, `/research/quick/{t}` (single LLM call), and `/research/deep/{t}` (4-agent multi-lens debate).
@@ -162,6 +168,7 @@ src/app/
   strategies/           ADR 0007 — Strategy ABC + 3 baselines
   research/             entry/exit research feature: schema, exits, context, quick (1
                         LLM call), deep (4 agents + judge), agents/ subpackage
+  portfolio/            manual trade ledger: schema, pure ledger fold, pricing, service
   screener/             broad-universe filter funnel (value/growth/quality/technical)
 configs/                creators.yaml, universe.csv, settings.yaml
 data/                   ingested data + caches (gitignored except gold/)
