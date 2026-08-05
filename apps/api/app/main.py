@@ -27,6 +27,7 @@ from apps.api.app.routes import (
     gold,
     health,
     leaderboard,
+    portfolio,
     review,
     tags,
     tickers,
@@ -69,6 +70,7 @@ app.add_middleware(
 
 # Mount routers. Group by entity for clarity in the OpenAPI doc.
 app.include_router(health.router)
+app.include_router(portfolio.router)
 app.include_router(creators.router)
 app.include_router(leaderboard.router)
 app.include_router(calls.router)
