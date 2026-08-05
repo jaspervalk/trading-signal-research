@@ -21,3 +21,14 @@ def test_pf_add_help_documents_required_options():
     assert result.exit_code == 0
     for option in ("--side", "--qty", "--price", "--date"):
         assert option in result.stdout
+
+
+def test_pf_add_rejects_malformed_date():
+    result = runner.invoke(
+        app,
+        ["pf", "add", "NVDA", "--side", "buy", "--qty", "1",
+         "--price", "100", "--date", "15-07-2026"],
+    )
+    assert result.exit_code == 1
+    assert "YYYY-MM-DD" in result.stdout
+    assert "Traceback" not in result.stdout

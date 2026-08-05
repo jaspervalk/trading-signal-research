@@ -850,7 +850,11 @@ def pf_add(
     from app.portfolio.ledger import LedgerError
     from app.portfolio.schema import TradeIn
 
-    traded_at = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    try:
+        traded_at = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        typer.echo(f"rejected: could not read --date {date!r}; expected YYYY-MM-DD")
+        raise typer.Exit(code=1) from exc
     payload = TradeIn(
         ticker=ticker, side=side, quantity=qty, price_per_share=price,
         currency=currency, fees=fees, traded_at=traded_at, eur_amount=eur, note=note,
