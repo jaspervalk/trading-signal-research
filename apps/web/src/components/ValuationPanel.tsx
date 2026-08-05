@@ -1,5 +1,19 @@
+import { Provenance } from "@/components/Provenance";
 import type { ResearchValuation } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+/** Age of the metadata, in the coarsest unit that is still honest. */
+function freshness(fetchedAt: string | null): string | undefined {
+  if (!fetchedAt) return undefined;
+  const ms = Date.now() - new Date(fetchedAt).getTime();
+  if (Number.isNaN(ms) || ms < 0) return undefined;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m old`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h old`;
+  return `${Math.floor(hours / 24)}d old`;
+}
 
 /**
  * Valuation context ribbon. Decision-support context, never a trigger.
@@ -28,7 +42,12 @@ export function ValuationPanel({ valuation }: { valuation: ResearchValuation }) 
   return (
     <section className="bg-[var(--panel)] border border-[var(--border)] font-mono-jb">
       <header className="px-4 py-3 border-b border-[var(--hairline-2)]">
-        <h2 className="text-sm tracking-tight">Valuation</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-sm tracking-tight">Valuation</h2>
+          {/* Multiples move with price, so their age is load-bearing: a stale
+              forward P/E reads as a live one unless the fetch time is shown. */}
+          <Provenance kind="computed" detail={freshness(valuation.fetched_at)} />
+        </div>
         <p className="text-xs uppercase tracking-wider text-[var(--muted-foreground)] mt-1">
           {valuation.sector || "—"} · {valuation.industry || "—"} · context, not trigger
         </p>

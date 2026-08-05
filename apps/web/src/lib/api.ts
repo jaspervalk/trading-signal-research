@@ -332,6 +332,9 @@ export type ResearchIdentity = {
 };
 
 export type ResearchValuation = {
+  /** When the underlying yfinance metadata was fetched. Multiples are
+   *  price-derived, so a stale value looks identical to a live one. */
+  fetched_at: string | null;
   market_cap: number | null;
   forward_pe: number | null;
   trailing_pe: number | null;

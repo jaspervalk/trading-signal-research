@@ -4,15 +4,13 @@ import type { TickerSignal } from "@/lib/api";
 import { fmtDateTime, fmtIsoDate } from "@/lib/utils";
 
 /**
- * IA section 8: methodology / data-state footer. The Tape-direction showpiece —
- * 3-col grid (pipeline state | definitions | ADR links) plus the full-width
- * LOW-N WARNING banner.
+ * Methodology and data-state footer: pipeline state, definitions, ADR links.
  *
- * The banner has two modes:
- *   - active (props.isLowN === true): chunky amber border, no hatch overlay
- *   - inactive demo (default): same chrome with a 45° hatch overlay and a
- *     `[N=… · ABOVE THRESHOLD · BANNER SUPPRESSED IN PRODUCTION]` caption,
- *     so the warning treatment is documented and visible even when N is fine.
+ * The full-width amber LOW-N banner that used to close this section was
+ * removed in 2026-08. It shouted about transcript sample size on a page whose
+ * verdict never depended on transcripts, and it fired on every ticker with
+ * fewer than five mentions, which is nearly all of them. The same caveat now
+ * sits inside the collapsed creator section, next to the data it qualifies.
  */
 export function MethodologyFooter({
   totalMentions,
@@ -23,7 +21,6 @@ export function MethodologyFooter({
   signals: TickerSignal[] | undefined;
   lastExtractorRun: string | null;
 }) {
-  const lowN = totalMentions < 5;
   const lastAggregate = signals && signals.length > 0 ? signals[0].computed_at : null;
   const aggregatorVersion =
     signals && signals.length > 0 ? signals[0].aggregator_version : null;
@@ -43,8 +40,6 @@ export function MethodologyFooter({
         <DefinitionsCol />
         <AdrLinksCol />
       </div>
-
-      <LowNBanner isActive={lowN} totalMentions={totalMentions} />
     </section>
   );
 }
@@ -150,42 +145,6 @@ function AdrLinksCol() {
           → Disclaimer · Research only, not investment advice
         </Link>
       </div>
-    </div>
-  );
-}
-
-/**
- * Full-width chunky-bordered banner. Lives at the bottom of the methodology
- * section so the warning treatment is visible by default — see ADR 0005's
- * epistemic-honesty-as-design rule.
- */
-function LowNBanner({
-  isActive,
-  totalMentions,
-}: {
-  isActive: boolean;
-  totalMentions: number;
-}) {
-  return (
-    <div
-      className={`relative border-t-4 border-[var(--warning)] bg-[var(--panel)] px-6 py-5 ${
-        isActive ? "" : "demo-hatch"
-      }`}
-    >
-      <div className="flex items-baseline justify-between gap-4 flex-wrap">
-        <p className="text-[var(--warning)] font-bold uppercase tracking-wider text-[15px] md:text-[18px] leading-tight">
-          Low-N warning — treat as suggestive, not actionable — total mentions
-          below threshold
-        </p>
-        <span className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)]">
-          {isActive ? "[ACTIVE]" : "[DEMO_RENDER · INACTIVE_STATE]"}
-        </span>
-      </div>
-      <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
-        {isActive
-          ? `[N=${totalMentions} · BELOW THRESHOLD (5) · BANNER FIRING]`
-          : `[N=${totalMentions} · ABOVE THRESHOLD · BANNER SUPPRESSED IN PRODUCTION]`}
-      </p>
     </div>
   );
 }

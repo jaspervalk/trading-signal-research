@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { LensPanel } from "@/components/LensPanel";
+import { Provenance } from "@/components/Provenance";
 import { RRRangePanel } from "@/components/RRRangePanel";
 import { api, type EntryExitPlan, type ResearchZoneBand } from "@/lib/api";
 import { cn, fmtDateTime } from "@/lib/utils";
@@ -58,7 +59,13 @@ export function EntryExitPanel({ ticker }: { ticker: string }) {
     <section className="bg-[var(--panel)] border border-[var(--border)] font-mono-jb">
       <header className="px-4 py-3 border-b border-[var(--hairline-2)] flex items-baseline justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-sm tracking-tight">Entry / Exit research</h2>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h2 className="text-sm tracking-tight">Entry / Exit research</h2>
+            <Provenance
+              kind="model"
+              detail={plan ? `$${plan.cost_usd.toFixed(3)}` : undefined}
+            />
+          </div>
           <p className="text-xs uppercase tracking-wider text-[var(--muted-foreground)] mt-1">
             {plan
               ? `${plan.mode.toUpperCase()} · ${plan.confidence} confidence · ${plan.timeframe}`
