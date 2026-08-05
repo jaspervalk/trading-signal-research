@@ -47,16 +47,38 @@ def clear_cache() -> None:
     _cache.clear()
 
 
+def _read(info: object, attr: str, key: str) -> object:
+    """Read one field from a yfinance FastInfo, tolerating both conventions.
+
+    FastInfo exposes snake_case *attributes* (`info.last_price`) but its dict
+    keys are camelCase (`info["lastPrice"]`). So `info.get("last_price")`
+    returns None for every price field while the attribute returns the real
+    value — which silently produced priceless quotes for every ticker until
+    2026-08-05. Try the attribute first, then the mapping key.
+    """
+    value = getattr(info, attr, None)
+    if value is not None:
+        return value
+    getter = getattr(info, "get", None)
+    if getter is None:
+        return None
+    try:
+        return getter(key)
+    except Exception:  # pragma: no cover — defensive, yfinance shapes vary
+        return None
+
+
 def _fetch_one(ticker: str) -> Quote:
     """Fetch one quote from yfinance. Raises on failure; callers isolate."""
     import yfinance as yf
 
     info = yf.Ticker(ticker).fast_info
+    currency = _read(info, "currency", "currency")
     return Quote(
         ticker=ticker,
-        last_price=_as_float(info.get("last_price")),
-        previous_close=_as_float(info.get("previous_close")),
-        currency=info.get("currency"),
+        last_price=_as_float(_read(info, "last_price", "lastPrice")),
+        previous_close=_as_float(_read(info, "previous_close", "previousClose")),
+        currency=str(currency) if currency is not None else None,
         as_of=_now(),
     )
 

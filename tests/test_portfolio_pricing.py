@@ -96,3 +96,70 @@ def test_eur_usd_rate_returns_none_on_failure(monkeypatch):
 
     monkeypatch.setattr(pricing, "_fetch_one", fake)
     assert pricing.get_eur_usd_rate() is None
+
+
+# --- _fetch_one against a realistic FastInfo -------------------------------
+#
+# Every other test in this file monkeypatches `_fetch_one`, so none of them
+# exercised the real yfinance call. That gap hid a total failure: FastInfo
+# exposes snake_case ATTRIBUTES but camelCase dict KEYS, so `.get("last_price")`
+# returned None for every ticker and the whole portfolio priced as "—".
+
+
+class _FakeFastInfo:
+    """Mimics yfinance FastInfo: snake_case attributes, camelCase keys."""
+
+    _KEYS = {"lastPrice": 492.81, "previousClose": 490.63, "currency": "USD"}
+
+    @property
+    def last_price(self) -> float:
+        return self._KEYS["lastPrice"]
+
+    @property
+    def previous_close(self) -> float:
+        return self._KEYS["previousClose"]
+
+    @property
+    def currency(self) -> str:
+        return self._KEYS["currency"]
+
+    def get(self, key, default=None):
+        # Deliberately only knows camelCase, exactly like the real thing.
+        return self._KEYS.get(key, default)
+
+
+class _CamelOnlyFastInfo:
+    """A shape with no snake_case attributes at all — exercises the fallback."""
+
+    _KEYS = {"lastPrice": 10.0, "previousClose": 9.0, "currency": "EUR"}
+
+    def get(self, key, default=None):
+        return self._KEYS.get(key, default)
+
+
+def _patch_ticker(monkeypatch, fast_info_obj):
+    import yfinance
+
+    class _FakeTicker:
+        def __init__(self, ticker):
+            self.fast_info = fast_info_obj
+
+    monkeypatch.setattr(yfinance, "Ticker", _FakeTicker)
+
+
+def test_fetch_one_reads_snake_case_attributes_not_dict_keys(monkeypatch):
+    """The regression guard: `.get("last_price")` is None on a real FastInfo."""
+    _patch_ticker(monkeypatch, _FakeFastInfo())
+    quote = pricing._fetch_one("MSFT")
+    assert quote.last_price == 492.81
+    assert quote.previous_close == 490.63
+    assert quote.currency == "USD"
+
+
+def test_fetch_one_falls_back_to_camel_case_keys(monkeypatch):
+    """A shape exposing only mapping keys must still yield a priced quote."""
+    _patch_ticker(monkeypatch, _CamelOnlyFastInfo())
+    quote = pricing._fetch_one("ASML.AS")
+    assert quote.last_price == 10.0
+    assert quote.previous_close == 9.0
+    assert quote.currency == "EUR"
