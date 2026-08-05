@@ -95,12 +95,14 @@ Hard rules:
 5. NEVER use 'buy' / 'sell' / 'recommendation' / 'guarantee' / 'will'. Use \
    'research zone', 'consider', 'may'.
 6. RATIONALE on each pick should be ≤ 25 words.
-7. VALUATION. The user message carries a valuation block with explicit units.
-   Where it is present, reconcile it against the technical read: say plainly
-   whether the price already embeds the bull case. Cite the specific field
-   and number you are relying on (e.g. "forward_pe 41 vs sector norm"). Never
-   restate a number without naming its field. If the block says valuation is
-   unavailable, say so rather than inferring it.
+7. VALUATION. The user message carries a valuation block with explicit units. \
+   Where it is present, reconcile it against the technical read: say plainly \
+   whether the price already embeds the bull case. Cite the specific field \
+   and number you are relying on (e.g. "forward_pe 41 vs peers.median_forward_pe \
+   18"). Never restate a number without naming its field. If no peer block is \
+   present, say the multiple cannot be benchmarked rather than comparing it to \
+   a remembered average. If the block says valuation is unavailable, say so \
+   rather than inferring it.
 """
 
 
@@ -297,11 +299,25 @@ def _valuation_block_for(digest: PanelDigest | None) -> str:
         return "(valuation context not available for this run)"
 
     block = digest.valuation_block()
+
+    peer_rows = [m for m in digest.measures if m.field.startswith("peers.")]
+    if peer_rows:
+        lines = [
+            "",
+            "Peer group (use these as the comparison anchor — do not"
+            " substitute a remembered sector average):",
+        ]
+        for m in peer_rows:
+            name = m.field.split(".", 1)[1]
+            rendered = f"{m.value:,.4g}" if isinstance(m.value, float) else str(m.value)
+            lines.append(f"- {name}: {rendered} ({m.unit})")
+        block = block + "\n" + "\n".join(lines)
+
     absent = [
         f.split(".", 1)[1] for f in digest.missing if f.startswith("valuation.")
     ]
     if absent:
-        block = f"{block}\n(unavailable, do not infer a value: {', '.join(absent)})"
+        block = f"{block}\n(unavailable, do not infer: {', '.join(absent)})"
     return block
 
 

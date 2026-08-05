@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from app.analysis.digest import build_panel_digest
 from app.analysis.schema import (
@@ -89,3 +90,35 @@ def test_valuation_block_names_unavailable_fields():
     block = judge_mod._valuation_block_for(digest)
     assert "unavailable" in block.lower()
     assert "trailing_pe" in block  # present in `missing`, absent from measures
+
+
+def _stub_peers():
+    # Attribute names must match `_PEER_FIELDS` / `_PEER_PROPERTIES` in
+    # app/analysis/digest.py exactly — `build_panel_digest` reads them via
+    # getattr(source, name, None).
+    return SimpleNamespace(
+        median_forward_pe=18.0,
+        median_peg=1.4,
+        median_revenue_growth_yoy=0.11,
+        median_profit_margins=0.14,
+        forward_pe_relative="above_peers",
+        growth_relative="above_peers",
+        margin_relative="in_line",
+    )
+
+
+def test_valuation_block_includes_peer_medians_when_available():
+    """The judge is told to cite 'vs peers.median_forward_pe' — it must be
+    able to see that field, not just the ticker's own valuation."""
+    digest = build_panel_digest(_view(), peers=_stub_peers())
+    block = judge_mod._valuation_block_for(digest)
+    assert "median_forward_pe" in block
+    assert "18" in block
+
+
+def test_valuation_block_has_no_peer_heading_when_peers_absent():
+    """No peer set → no 'Peer group' section, but valuation still renders."""
+    digest = build_panel_digest(_view())
+    block = judge_mod._valuation_block_for(digest)
+    assert "Peer group" not in block
+    assert "forward_pe" in block
