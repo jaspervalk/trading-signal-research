@@ -7,11 +7,10 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const items = [
-  { href: "/", label: "Leaderboard" },
-  { href: "/calls", label: "Calls" },
-  { href: "/tickers", label: "Tickers" },
+  { href: "/", label: "Portfolio" },
+  { href: "/tickers", label: "Research" },
   { href: "/watchlist", label: "Watchlist" },
-  { href: "/gold", label: "Gold set" },
+  { href: "/creators", label: "Creators" },
   { href: "/methodology", label: "Methodology" },
 ];
 
