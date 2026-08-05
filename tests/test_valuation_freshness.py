@@ -36,13 +36,18 @@ def test_build_valuation_stamps_fetched_at():
     assert panel.forward_pe == 30.0
 
 
-def test_build_valuation_does_not_invent_a_stamp():
-    """A caller that supplies metadata without a stamp gets no stamp —
-    fetched_at must describe the data passed in, never a cache entry."""
+def test_build_valuation_does_not_invent_a_stamp(monkeypatch):
+    """A live cache entry for this ticker must NOT leak into a panel whose
+    metadata came from elsewhere. Pre-fix, _build_valuation looked the stamp
+    up by ticker and would have stamped this panel with an unrelated fetch."""
     research_mod._resolve_metadata.cache_clear()
+    monkeypatch.setattr(research_mod, "_yf_info", lambda t: dict(META))
+    research_mod._resolve_metadata("NVDA")
+    assert research_mod._resolve_metadata.peek_fetched_at("NVDA") is not None
+
     panel = research_mod._build_valuation(
         ticker="NVDA",
-        metadata=dict(META),
+        metadata=dict(META),          # supplied by the caller, not from the cache
         as_of=datetime.now(tz=UTC),
         fetch_metadata=False,
     )
