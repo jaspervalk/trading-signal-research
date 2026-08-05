@@ -7,8 +7,16 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.portfolio import pricing
+from app.portfolio.policy import Policy, Trigger
 
 BASE = datetime(2026, 6, 1, tzinfo=timezone.utc)
+
+
+def _use_policy(monkeypatch, policy: Policy) -> None:
+    """Route around the yaml-backed, lru_cache'd `load_policy` for a test."""
+    import apps.api.app.routes.portfolio as portfolio_routes
+
+    monkeypatch.setattr(portfolio_routes, "load_policy", lambda: policy)
 
 
 @pytest.fixture
@@ -135,3 +143,94 @@ def test_delete_buy_that_a_later_sell_depends_on_returns_422(client):
 
     # The refused delete must not have removed the trade.
     assert len(client.get("/portfolio/trades").json()) == 2
+
+
+# --- GET /portfolio/policy --------------------------------------------------
+
+
+def test_policy_available_with_priced_positions(client, monkeypatch):
+    _use_policy(
+        monkeypatch,
+        Policy(
+            base_currency="EUR",
+            target_weights={"NVDA": 0.5},
+            factors={"GROWTH": ["NVDA"]},
+            ai_factors=["GROWTH"],
+            ai_target_max=0.6,
+        ),
+    )
+    client.post("/portfolio/trades", json=_payload())
+
+    r = client.get("/portfolio/policy")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["available"] is True
+    assert body["reason"] is None
+    assert len(body["positions"]) == 1
+    assert body["positions"][0]["ticker"] == "NVDA"
+
+
+def test_policy_response_includes_ai_weight_buy_order_and_triggers(client, monkeypatch):
+    _use_policy(
+        monkeypatch,
+        Policy(
+            base_currency="EUR",
+            target_weights={"NVDA": 0.5},
+            factors={"GROWTH": ["NVDA"]},
+            ai_factors=["GROWTH"],
+            ai_target_max=0.6,
+            triggers=[
+                Trigger(
+                    ticker="NVDA",
+                    status="watch",
+                    condition="data-center capex guidance cut",
+                    next_report="2026-09-01",
+                )
+            ],
+            monthly_trade_budget=3,
+        ),
+    )
+    client.post("/portfolio/trades", json=_payload())
+
+    r = client.get("/portfolio/policy")
+    assert r.status_code == 200
+    body = r.json()
+    assert "ai_weight" in body
+    assert body["buy_order"] == ["NVDA"]
+    assert body["triggers"] == [
+        {
+            "ticker": "NVDA",
+            "status": "watch",
+            "condition": "data-center capex guidance cut",
+            "next_report": "2026-09-01",
+        }
+    ]
+    assert body["monthly_trade_budget"] == 3
+
+
+def test_policy_position_over_target_reports_trim(client, monkeypatch):
+    _use_policy(
+        monkeypatch,
+        Policy(
+            base_currency="EUR",
+            target_weights={"NVDA": 0.05},
+            factors={"GROWTH": ["NVDA"]},
+            ai_factors=["GROWTH"],
+        ),
+    )
+    client.post("/portfolio/trades", json=_payload())
+
+    r = client.get("/portfolio/policy")
+    assert r.status_code == 200
+    nvda = next(p for p in r.json()["positions"] if p["ticker"] == "NVDA")
+    assert nvda["band_status"] == "trim"
+
+
+def test_policy_unavailable_with_no_positions(client, monkeypatch):
+    _use_policy(monkeypatch, Policy(base_currency="EUR"))
+
+    r = client.get("/portfolio/policy")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["available"] is False
+    assert body["reason"]

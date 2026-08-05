@@ -795,6 +795,52 @@ export type TradeInput = {
   note?: string | null;
 };
 
+// Policy view (target weights, factor concentration, rebalancing bands).
+// Mirrors PolicyPositionOut / FactorSliceOut / TriggerOut / PolicyViewOut in
+// src/app/portfolio/schema.py — keep these in sync.
+
+export type PolicyPositionOut = {
+  ticker: string;
+  factor: string;
+  value_base: number;
+  weight: number;
+  target: number | null;
+  status: string | null;
+  band_low: number | null;
+  band_high: number | null;
+  band_status: "in_band" | "trim" | "add" | "no_target";
+  deviation_pp: number | null;
+};
+
+export type FactorSliceOut = {
+  name: string;
+  value_base: number;
+  weight: number;
+};
+
+export type TriggerOut = {
+  ticker: string;
+  status: "ok" | "watch" | "fired";
+  condition: string;
+  next_report: string | null;
+};
+
+export type PolicyViewOut = {
+  available: boolean;
+  reason: string | null;
+  base_currency: string;
+  total_base: number;
+  positions: PolicyPositionOut[];
+  factors: FactorSliceOut[];
+  ai_weight: number;
+  ai_target_max: number;
+  ai_excess_pp: number;
+  missing_targets: string[];
+  buy_order: string[];
+  triggers: TriggerOut[];
+  monthly_trade_budget: number;
+};
+
 // ---------- Endpoints ----------
 
 export const api = {
@@ -818,6 +864,8 @@ export const api = {
       }),
     deleteTrade: (id: number) =>
       request<void>(`/portfolio/trades/${id}`, { method: "DELETE" }),
+    policy: (cashBase = 0) =>
+      request<PolicyViewOut>(`/portfolio/policy?cash_base=${cashBase}`),
   },
   creators: {
     list: (activeOnly = false) =>

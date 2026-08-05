@@ -107,3 +107,60 @@ class PortfolioView(BaseModel):
     eur_usd_rate: float | None = None
     quote_errors: list[str] = Field(default_factory=list)
     as_of: datetime
+
+
+# ---------------------------------------------------------------------------
+# Policy view (target weights, factor concentration, rebalancing bands).
+#
+# `PolicyView` / `PositionPolicy` / `FactorSlice` in `app.portfolio.policy` are
+# dataclasses with `@property` fields (`deviation_pp`, `ai_excess_pp`,
+# `most_underweight`) that a FastAPI `response_model` cannot see. These models
+# materialise those properties into plain fields for the HTTP boundary.
+
+
+class PolicyPositionOut(BaseModel):
+    """One position measured against its target, over the wire."""
+
+    ticker: str
+    factor: str
+    value_base: float
+    weight: float
+    target: float | None
+    status: str | None
+    band_low: float | None
+    band_high: float | None
+    band_status: str
+    deviation_pp: float | None
+
+
+class FactorSliceOut(BaseModel):
+    name: str
+    value_base: float
+    weight: float
+
+
+class TriggerOut(BaseModel):
+    """One manually-maintained invalidation condition, over the wire."""
+
+    ticker: str
+    status: str
+    condition: str
+    next_report: str | None
+
+
+class PolicyViewOut(BaseModel):
+    """Everything the monitoring page needs, or an explicit reason it is absent."""
+
+    available: bool
+    reason: str | None
+    base_currency: str
+    total_base: float
+    positions: list[PolicyPositionOut] = Field(default_factory=list)
+    factors: list[FactorSliceOut] = Field(default_factory=list)
+    ai_weight: float = 0.0
+    ai_target_max: float = 0.65
+    ai_excess_pp: float
+    missing_targets: list[str] = Field(default_factory=list)
+    buy_order: list[str] = Field(default_factory=list)
+    triggers: list[TriggerOut] = Field(default_factory=list)
+    monthly_trade_budget: int
