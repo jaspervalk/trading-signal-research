@@ -171,6 +171,11 @@ class ValuationPanel(BaseModel):
     sector: str | None = None
     industry: str | None = None
 
+    # Age of the yfinance metadata this panel was built from. None when
+    # metadata was unavailable. Consumers (and any LLM contract) must be
+    # able to tell a 10-minute-old multiple from a 10-day-old one.
+    fetched_at: datetime | None = None
+
 
 class IndicatorPanel(BaseModel):
     """Section 3 (part 1) — moving averages, momentum, volatility, volume, RS."""

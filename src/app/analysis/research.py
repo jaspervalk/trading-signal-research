@@ -52,6 +52,7 @@ from app.analysis.transcript import build_transcript_context
 from app.config import REPO_ROOT
 from app.logging import get_logger
 from app.market.yfinance_client import get_daily_bars
+from app.ttl_cache import ttl_cache
 
 log = get_logger(__name__)
 
@@ -81,26 +82,35 @@ def _load_universe() -> set[str]:
 # ---------------------------------------------------------------------------
 # yfinance metadata (best-effort, slow, cached in-process)
 
+# Metadata TTL. forward_pe and friends are price-derived, so they go stale
+# within minutes; the earnings date does not, so it gets a longer window.
+METADATA_TTL_SECONDS = 900  # 15 minutes
+EARNINGS_TTL_SECONDS = 21600  # 6 hours
 
-@lru_cache(maxsize=256)
+
+def _yf_info(ticker: str) -> dict:
+    """Raw yfinance .info fetch. Split out so tests can patch it."""
+    import yfinance as yf
+
+    info = yf.Ticker(ticker).get_info()
+    return dict(info) if info else {}
+
+
+@ttl_cache(seconds=METADATA_TTL_SECONDS)
 def _resolve_metadata(ticker: str) -> dict:
     """Best-effort wrapper around yf.Ticker(...).info.
 
-    Cached per process. Failures are silent; the research view degrades
-    gracefully when metadata is missing. Do not call on a hot path.
+    Cached for METADATA_TTL_SECONDS. Failures are silent; the research view
+    degrades gracefully when metadata is missing. Do not call on a hot path.
     """
     try:
-        import yfinance as yf
-
-        info = yf.Ticker(ticker).get_info()
-        # Newer yfinance returns dict; older returns dict-like. Normalize.
-        return dict(info) if info else {}
+        return _yf_info(ticker)
     except Exception as e:  # pragma: no cover — yfinance is flaky
         log.warning("research.metadata.error", ticker=ticker, error=str(e))
         return {}
 
 
-@lru_cache(maxsize=256)
+@ttl_cache(seconds=EARNINGS_TTL_SECONDS)
 def _resolve_next_earnings(ticker: str) -> datetime | None:
     """Best-effort fetch of the next earnings date via yfinance.
 
@@ -190,6 +200,7 @@ def _build_valuation(
         next_earnings_date=next_earn,
         sector=metadata.get("sector"),
         industry=metadata.get("industry"),
+        fetched_at=_resolve_metadata.peek_fetched_at(ticker),
     )
 
 
