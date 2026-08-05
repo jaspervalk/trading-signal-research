@@ -93,6 +93,7 @@ def _yf_info(ticker: str) -> dict:
     import yfinance as yf
 
     info = yf.Ticker(ticker).get_info()
+    # Newer yfinance returns dict; older returns dict-like. Normalize.
     return dict(info) if info else {}
 
 
@@ -159,6 +160,7 @@ def _build_valuation(
     metadata: dict,
     as_of: datetime,
     fetch_metadata: bool,
+    fetched_at: datetime | None = None,
 ) -> "ValuationPanel":  # noqa: F821 — forward ref on the type
     """Assemble the `ValuationPanel` from yfinance metadata.
 
@@ -200,7 +202,7 @@ def _build_valuation(
         next_earnings_date=next_earn,
         sector=metadata.get("sector"),
         industry=metadata.get("industry"),
-        fetched_at=_resolve_metadata.peek_fetched_at(ticker),
+        fetched_at=fetched_at,
     )
 
 
@@ -272,6 +274,7 @@ def build_ticker_research_view(
     universe = _load_universe()
     in_universe = ticker in universe
     metadata = _resolve_metadata(ticker) if fetch_metadata else {}
+    metadata_fetched_at = _resolve_metadata.peek_fetched_at(ticker) if fetch_metadata else None
     identity = _build_identity(
         ticker=ticker,
         bars=bars,
@@ -283,7 +286,11 @@ def build_ticker_research_view(
 
     # 2b. Valuation panel (best-effort, always emitted; empty on cache miss).
     valuation = _build_valuation(
-        ticker=ticker, metadata=metadata, as_of=as_of, fetch_metadata=fetch_metadata
+        ticker=ticker,
+        metadata=metadata,
+        as_of=as_of,
+        fetch_metadata=fetch_metadata,
+        fetched_at=metadata_fetched_at,
     )
 
     # 3. Compute the technical panels.

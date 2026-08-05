@@ -22,20 +22,31 @@ def test_valuation_panel_has_fetched_at_field():
     assert ValuationPanel().fetched_at is None
 
 
-def test_build_valuation_stamps_fetched_at(monkeypatch):
-    research_mod._resolve_metadata.cache_clear()
-    monkeypatch.setattr(research_mod, "_yf_info", lambda t: dict(META))
-    research_mod._resolve_metadata("NVDA")
+def test_build_valuation_stamps_fetched_at():
+    stamp = datetime.now(tz=UTC)
+    panel = research_mod._build_valuation(
+        ticker="NVDA",
+        metadata=dict(META),
+        as_of=datetime.now(tz=UTC),
+        fetch_metadata=False,
+        fetched_at=stamp,
+    )
+    assert panel.fetched_at == stamp
+    assert panel.fetched_at.tzinfo is not None
+    assert panel.forward_pe == 30.0
 
+
+def test_build_valuation_does_not_invent_a_stamp():
+    """A caller that supplies metadata without a stamp gets no stamp —
+    fetched_at must describe the data passed in, never a cache entry."""
+    research_mod._resolve_metadata.cache_clear()
     panel = research_mod._build_valuation(
         ticker="NVDA",
         metadata=dict(META),
         as_of=datetime.now(tz=UTC),
         fetch_metadata=False,
     )
-    assert panel.fetched_at is not None
-    assert panel.fetched_at.tzinfo is not None
-    assert panel.forward_pe == 30.0
+    assert panel.fetched_at is None
 
 
 def test_empty_metadata_yields_unstamped_panel():
