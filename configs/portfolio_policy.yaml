@@ -1,0 +1,137 @@
+# Portfolio policy: target weights, factor mapping, rebalancing bands.
+#
+# Edit this file rather than any component. Everything downstream (weights,
+# deviation bands, the factor charts, the what-if projection) reads from here.
+#
+# --------------------------------------------------------------------------
+# What a "factor" means here — read before editing the mapping.
+#
+# Buckets group positions by **shared drawdown driver**, not by revenue source
+# and not by GICS sector. Sector labels hide the real correlation: Constellation
+# Energy is classified Utilities and is functionally an AI-capex play through
+# datacenter power agreements.
+#
+# This definition is why GOOGL and META sit in AI_PLATFORM despite being
+# ~75% and ~97% advertising businesses. Their *revenue* is not AI; their
+# *multiple* is, and a capex pause derates them alongside CRWV. That single
+# decision moves the headline number a lot: on 2026-08-05 the portfolio was
+# 85.1% AI-related with them included and 63.0% without. If you ever decide the
+# factor should track revenue exposure instead, change this comment first, then
+# the mapping, and expect the target to become non-binding.
+# --------------------------------------------------------------------------
+
+base_currency: EUR # every weight is computed in this currency
+
+# Fraction of portfolio value. Cash is a real target, not a residual.
+target_weights:
+  GOOGL: 0.13
+  NOW: 0.12
+  ASML.AS: 0.11
+  CEG: 0.09
+  NBIS: 0.09
+  RKLB: 0.09
+  RHM.DE: 0.09
+  MP: 0.07
+  CRWV: 0.06
+  AAOI: 0.05
+  ZPDH.DE: 0.05
+  CASH: 0.05
+
+# Positions held without a target get an explicit status rather than silently
+# appearing as "overweight by their whole size".
+untargeted_status:
+  MSFT: outside_target # deliberately held
+  META: outside_target
+  CRDO: no_thesis
+  IREN: no_thesis
+  ZETA: no_thesis
+  HOOD: no_thesis
+  SOFI: no_thesis
+  KEEL: exit
+  SPCX: ignore # too small to steer
+
+# Exactly one driver per ticker.
+factors:
+  AI_PLATFORM: [GOOGL, MSFT, META, NOW]
+  AI_CAPEX: [CRWV, NBIS, IREN, KEEL]
+  AI_COMPONENTS: [AAOI, CRDO, TSM, ASML.AS]
+  AI_POWER: [CEG]
+  DEFENSE: [RHM.DE]
+  SPACE: [RKLB, SPCX]
+  MATERIALS: [MP]
+  HEALTHCARE: [ZPDH.DE, NBTK.DE]
+  FINTECH: [HOOD, SOFI, ZETA]
+  CASH: [CASH]
+
+# The buckets that sum to the headline concentration metric.
+ai_factors: [AI_PLATFORM, AI_CAPEX, AI_COMPONENTS, AI_POWER]
+ai_target_max: 0.65 # the number this whole module exists to move
+
+# 5/25 rule: rebalance on a 5 percentage-point absolute move, or a 25% relative
+# move, whichever binds first. Below a 20% target the relative band is always
+# tighter, and no target here exceeds 13%, so in practice only the relative
+# branch fires. The absolute branch is kept because targets may grow.
+band_absolute_pp: 0.05
+band_relative: 0.25
+
+# Commission-free trades per calendar month. Sells count.
+monthly_trade_budget: 5
+
+# --------------------------------------------------------------------------
+# Invalidation triggers. Manually maintained; the app renders, never evaluates.
+#
+# `status` is yours to set: ok | watch | fired. Nothing here is automated,
+# because a trigger like "GPU depreciation schedule changed" has no data feed.
+# `next_report` is the date the next checkable event lands.
+# --------------------------------------------------------------------------
+triggers:
+  - ticker: CRWV
+    status: watch
+    next_report: null
+    condition: >-
+      GPU depreciation term changed (now 6yr) or an impairment lands -> exit.
+      Interest expense over revenue above 30% -> watch.
+  - ticker: AAOI
+    status: ok
+    next_report: null
+    condition: >-
+      Gross margin not tracking toward 35% by end 2026; a new issue priced low.
+  - ticker: NBIS
+    status: ok
+    next_report: null
+    condition: >-
+      ARR path toward $7-9bn; EBITDA margin after depreciation (not adjusted);
+      share count.
+  - ticker: RKLB
+    status: watch
+    next_report: "2026-08-10"
+    condition: >-
+      Neutron first flight Q4 2026. A second delay -> halve the weight.
+  - ticker: MP
+    status: watch
+    next_report: "2026-08-06"
+    condition: >-
+      Independence magnet plant on time H2 2026; magnet margins.
+  - ticker: RHM.DE
+    status: watch
+    next_report: "2026-08-06"
+    condition: >-
+      Order intake; conversion of the >EUR 80bn book into revenue; FCF conversion.
+  - ticker: NOW
+    status: ok
+    next_report: null
+    condition: >-
+      cRPO growth; AI ACV cadence; subscription gross margin (~82.5%);
+      renewal below 95% -> watch.
+  - ticker: CEG
+    status: ok
+    next_report: null
+    condition: "New datacenter PPAs; capacity factor (now 92%)."
+  - ticker: ASML.AS
+    status: ok
+    next_report: null
+    condition: "EUV system revenue growth; China mix."
+  - ticker: GOOGL
+    status: ok
+    next_report: null
+    condition: "Cloud growth above 30%; FCF recovery in 2027."

@@ -60,7 +60,11 @@ export function PortfolioTable({
                   {p.ticker}
                 </Link>
               </td>
-              <td className="py-2 text-right tabular-nums">{p.quantity.toLocaleString()}</td>
+              {/* Forced en-US: the browser locale renders "1,21" next to a
+                  "$328.29" in the same row, mixing decimal separators. */}
+              <td className="py-2 text-right tabular-nums">
+                {p.quantity.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+              </td>
               <td className="py-2 text-right tabular-nums">{money(p.avg_cost, p.currency)}</td>
               {!closed && (
                 <td className="py-2 text-right tabular-nums">{money(p.last_price, p.currency)}</td>

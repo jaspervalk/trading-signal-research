@@ -3,9 +3,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AddTradeForm } from "@/components/AddTradeForm";
+import { FactorConcentration } from "@/components/FactorConcentration";
 import { Card, CardHeader } from "@/components/Card";
 import { PortfolioTable } from "@/components/PortfolioTable";
+import { TargetDeviation } from "@/components/TargetDeviation";
 import { TickerSearch } from "@/components/TickerSearch";
+import { TriggerBoard } from "@/components/TriggerBoard";
 import { TradeLedger } from "@/components/TradeLedger";
 import { api, ApiError } from "@/lib/api";
 
@@ -22,6 +25,11 @@ export default function PortfolioPage() {
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ["portfolio"],
     queryFn: () => api.portfolio.get(true),
+  });
+  // Steering runs on deviation from target, not on profit and loss.
+  const { data: policy } = useQuery({
+    queryKey: ["portfolio-policy"],
+    queryFn: () => api.portfolio.policy(),
   });
 
   const totalsCurrency =
@@ -53,6 +61,20 @@ export default function PortfolioPage() {
                 <code>uvicorn apps.api.app.main:app --reload --port 8001</code>.
               </>
             )}
+          </p>
+        </Card>
+      )}
+
+      {policy?.available && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <FactorConcentration policy={policy} />
+          <TargetDeviation policy={policy} />
+        </div>
+      )}
+      {policy && !policy.available && policy.reason && (
+        <Card>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Target weights unavailable — {policy.reason}
           </p>
         </Card>
       )}
@@ -108,6 +130,7 @@ export default function PortfolioPage() {
         <CardHeader title="Trade ledger" subtitle="Everything you have recorded." />
         <TradeLedger />
       </Card>
+      {policy && <TriggerBoard policy={policy} />}
     </main>
   );
 }

@@ -57,6 +57,14 @@ export default function TickerDetailPage({
     queryFn: () => api.tickers.research(ticker, { fetch_metadata: true }),
     staleTime: 60_000,
   });
+  // Shared with PositionContext via the same query key, so the chart can draw
+  // your cost line without a second request.
+  const { data: portfolio } = useQuery({
+    queryKey: ["portfolio"],
+    queryFn: () => api.portfolio.get(true),
+    staleTime: 60_000,
+  });
+  const held = portfolio?.open_positions.find((p) => p.ticker === ticker) ?? null;
 
   const lastBar = bars?.bars.at(-1);
   const prevBar = bars?.bars.at(-2);
@@ -156,7 +164,12 @@ export default function TickerDetailPage({
                   No price data — yfinance returned nothing for this ticker.
                 </p>
               ) : (
-                <PriceChart bars={bars.bars} calls={calls ?? []} />
+                <PriceChart
+                  bars={bars.bars}
+                  calls={calls ?? []}
+                  avgCost={held?.avg_cost ?? null}
+                  invalidation={research?.entry_zone.invalidation_reference ?? null}
+                />
               )}
             </div>
           </section>
