@@ -14,13 +14,14 @@ tagged with the current `extractor_version`.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, select, union_all
 
 from app.config import load_project_settings
 from app.db import session_scope
 from app.extract.confidence import compute_final_confidence, decide_status
-from app.extract.llm_extractor import LLMExtractor
+from app.extract.llm_extractor import ExtractionResult, LLMExtractor
 from app.extract.prefilter import find_candidate_windows
 from app.extract.validator import validate, validate_claim
 from app.logging import get_logger
@@ -151,6 +152,183 @@ def _load_pending_documents(
         return [(r[0], r[1]) for r in rows]
 
 
+def run_extraction_batched(
+    *,
+    document_ids: list[int] | None = None,
+    extractor: LLMExtractor | None = None,
+    universe: Universe | None = None,
+    limit: int | None = None,
+    min_segments: int = 1,
+    use_two_pass: bool = True,
+    creator_filter: str | None = None,
+    batch_runner=None,
+) -> dict[str, int]:
+    """Same extraction, submitted through the Batches API at half the price.
+
+    Identical model, prompts, tools, validator, confidence scoring and
+    persistence — only the transport differs. Suited to the backlog (thousands
+    of independent windows, no latency requirement); the per-document path
+    above stays the right choice for the daily cron's handful of documents,
+    where waiting on a batch to land would be silly.
+
+    Structure: prefilter every document locally (free), submit all pass-1
+    windows as one batch, then — for two-pass runs — submit the windows that
+    produced a call as a second batch, since pass 2's prompt embeds pass 1's
+    output. Persistence happens once, after both rounds.
+
+    `batch_runner` is injectable for tests; it defaults to the real
+    `app.extract.batch.run_batch`.
+    """
+    from app.extract.batch import run_batch
+
+    settings = load_project_settings().extraction
+    universe = universe or load_universe()
+    extractor = extractor or LLMExtractor()
+    batch_runner = batch_runner or run_batch
+
+    summary = {
+        "documents": 0,
+        "extracted": 0,
+        "claims_extracted": 0,
+        "no_call": 0,
+        "rejected": 0,
+        "claims_rejected": 0,
+        "errors": 0,
+    }
+
+    docs = _load_pending_documents(
+        document_ids=document_ids,
+        extractor_version=settings.extractor_version,
+        limit=limit,
+        min_segments=min_segments,
+        creator_filter=creator_filter,
+    )
+
+    # --- Phase 1: build every candidate window locally. No spend yet. ---
+    pending: dict[str, tuple[int, Any]] = {}
+    for doc_id, doc_title in docs:
+        summary["documents"] += 1
+        try:
+            for idx, cand in enumerate(_candidates_for_document(doc_id, universe)):
+                pending[f"d{doc_id}-c{idx}"] = (doc_id, cand)
+        except Exception as e:  # pragma: no cover — defensive, mirrors sync path
+            summary["errors"] += 1
+            log.warning(
+                "extract.doc.error", doc_id=doc_id, title=doc_title, error=str(e)
+            )
+
+    log.info("extract.batch.run.start", n_docs=len(docs), n_windows=len(pending))
+    if not pending:
+        log.info("extract.run.done", **summary)
+        return summary
+
+    # --- Phase 2: pass 1 for every window. ---
+    first = batch_runner(
+        extractor,
+        {
+            cid: extractor.build_extract_params(cand.context.text)
+            for cid, (_, cand) in pending.items()
+        },
+        label="pass1",
+    )
+    summary["errors"] += first.n_failed
+
+    results = dict(first.results)
+
+    # --- Phase 3: pass 2 re-adjudicates only the windows that found a call. ---
+    if use_two_pass:
+        second_params = {
+            cid: extractor.build_validation_params(
+                pending[cid][1].context.text,
+                result.call.model_dump_json(indent=2),
+            )
+            for cid, result in first.results.items()
+            if result.call is not None
+        }
+        if second_params:
+            second = batch_runner(extractor, second_params, label="pass2")
+            summary["errors"] += second.n_failed
+            for cid, revalidated in second.results.items():
+                # Preserve pass-1 claims; pass 2 only adjudicates the call —
+                # same contract as LLMExtractor.extract_with_validation.
+                results[cid] = ExtractionResult(
+                    call=revalidated.call,
+                    claims=first.results[cid].claims,
+                    no_call=revalidated.no_call if revalidated.call is None else None,
+                    raw_response=revalidated.raw_response,
+                )
+
+    # --- Phase 4: validate + persist, exactly as the synchronous path does. ---
+    for cid, result in results.items():
+        doc_id, cand = pending[cid]
+        _persist_window_result(
+            result=result,
+            cand=cand,
+            doc_id=doc_id,
+            extractor_version=settings.extractor_version,
+            universe=universe,
+            summary=summary,
+        )
+
+    log.info("extract.run.done", **summary)
+    return summary
+
+
+def _candidates_for_document(doc_id: int, universe: Universe) -> list[Any]:
+    """Load a document's segments and prefilter them into candidate windows."""
+    with session_scope() as session:
+        segments = (
+            session.execute(
+                select(TranscriptSegment)
+                .where(TranscriptSegment.document_id == doc_id)
+                .order_by(TranscriptSegment.start_seconds)
+            )
+            .scalars()
+            .all()
+        )
+    if not segments:
+        return []
+    return list(find_candidate_windows(segments, universe))
+
+
+def _persist_window_result(
+    *,
+    result: ExtractionResult,
+    cand: Any,
+    doc_id: int,
+    extractor_version: str,
+    universe: Universe,
+    summary: dict[str, int],
+) -> None:
+    """Validate + persist one window's result. Shared by both transports."""
+    text = cand.context.text
+    primary_segment_id = (
+        cand.window.source_segment_ids[0] if cand.window.source_segment_ids else None
+    )
+    _persist_call(
+        result_call=result.call,
+        text=text,
+        cand=cand,
+        doc_id=doc_id,
+        primary_segment_id=primary_segment_id,
+        extractor_version=extractor_version,
+        universe=universe,
+        summary=summary,
+    )
+    _persist_claims(
+        claims=result.claims,
+        text=text,
+        cand=cand,
+        doc_id=doc_id,
+        primary_segment_id=primary_segment_id,
+        extractor_version=extractor_version,
+        universe=universe,
+        summary=summary,
+    )
+    if result.no_call is not None and not result.has_claims and result.call is None:
+        summary["no_call"] += 1
+
+
 def _process_document(
     *,
     doc_id: int,
@@ -167,57 +345,24 @@ def _process_document(
         "claims_rejected": 0,
     }
 
-    with session_scope() as session:
-        segments = (
-            session.execute(
-                select(TranscriptSegment)
-                .where(TranscriptSegment.document_id == doc_id)
-                .order_by(TranscriptSegment.start_seconds)
-            )
-            .scalars()
-            .all()
-        )
-
-    if not segments:
-        return summary
-
-    candidates = find_candidate_windows(segments, universe)
-
-    for cand in candidates:
+    for cand in _candidates_for_document(doc_id, universe):
         text = cand.context.text
         if use_two_pass:
             result = extractor.extract_with_validation(text)
         else:
             result = extractor.extract(text)
 
-        primary_segment_id = (
-            cand.window.source_segment_ids[0] if cand.window.source_segment_ids else None
-        )
-
         # Claims and calls are independent: a window may produce one, the
-        # other, both, or neither. Process them separately.
-        _persist_call(
-            result_call=result.call,
-            text=text,
+        # other, both, or neither. `_persist_window_result` handles both, and
+        # is shared with the batched transport so the two cannot drift.
+        _persist_window_result(
+            result=result,
             cand=cand,
             doc_id=doc_id,
-            primary_segment_id=primary_segment_id,
             extractor_version=extractor_version,
             universe=universe,
             summary=summary,
         )
-        _persist_claims(
-            claims=result.claims,
-            text=text,
-            cand=cand,
-            doc_id=doc_id,
-            primary_segment_id=primary_segment_id,
-            extractor_version=extractor_version,
-            universe=universe,
-            summary=summary,
-        )
-        if result.no_call is not None and not result.has_claims and result.call is None:
-            summary["no_call"] += 1
 
     return summary
 

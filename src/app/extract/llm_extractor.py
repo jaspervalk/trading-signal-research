@@ -194,17 +194,55 @@ class LLMExtractor:
             },
         ]
 
+    @property
+    def client(self) -> Anthropic:
+        """The underlying SDK client — used by the Batches transport."""
+        return self._client
+
+    # -- request builders -----------------------------------------------
+    #
+    # Both the synchronous path below and the Batches path in
+    # `app.extract.batch` build their requests here, so the two transports
+    # send byte-identical prompts, tools and settings. The gold set validates
+    # this request shape; a second hand-rolled copy of it would be validated
+    # by nothing.
+
+    def build_extract_params(self, text: str) -> dict[str, Any]:
+        """Params for a pass-1 extraction request."""
+        return {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "system": SYSTEM_PROMPT,
+            "tools": self._tools,
+            "tool_choice": {"type": "any"},
+            "messages": [{"role": "user", "content": USER_TEMPLATE.format(text=text)}],
+        }
+
+    def build_validation_params(self, text: str, previous_json: str) -> dict[str, Any]:
+        """Params for the pass-2 re-validation of an already-extracted call."""
+        return {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "system": SYSTEM_PROMPT,
+            "tools": self._tools,
+            "tool_choice": {"type": "any"},
+            "messages": [
+                {
+                    "role": "user",
+                    "content": VALIDATION_TEMPLATE.format(
+                        text=text, previous_json=previous_json
+                    ),
+                }
+            ],
+        }
+
+    def parse_response(self, response: Any) -> ExtractionResult:
+        """Public alias — the Batches path parses responses it didn't send."""
+        return self._parse_response(response)
+
     def extract(self, text: str) -> ExtractionResult:
         """One-pass extraction. Use extract_with_validation() for the safer two-pass."""
-        messages = [{"role": "user", "content": USER_TEMPLATE.format(text=text)}]
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=SYSTEM_PROMPT,
-            tools=self._tools,
-            tool_choice={"type": "any"},
-            messages=messages,
-        )
+        response = self._client.messages.create(**self.build_extract_params(text))
         return self._parse_response(response)
 
     def extract_with_validation(self, text: str) -> ExtractionResult:
@@ -220,19 +258,8 @@ class LLMExtractor:
             return first
 
         previous_json = first.call.model_dump_json(indent=2)
-        messages = [
-            {
-                "role": "user",
-                "content": VALIDATION_TEMPLATE.format(text=text, previous_json=previous_json),
-            }
-        ]
         response = self._client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=SYSTEM_PROMPT,
-            tools=self._tools,
-            tool_choice={"type": "any"},
-            messages=messages,
+            **self.build_validation_params(text, previous_json)
         )
         second = self._parse_response(response)
         # Preserve pass-1 claims; pass 2 only adjudicates the call.

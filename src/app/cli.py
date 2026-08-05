@@ -60,17 +60,28 @@ def extract(
             "burning budget on the most-recent creator's backlog."
         ),
     ),
+    batch: bool = typer.Option(
+        False,
+        "--batch",
+        help=(
+            "Submit via the Batches API: same model, prompts and validator at "
+            "half the price, but results arrive asynchronously (usually "
+            "under an hour, up to 24). Use for backlogs; leave off for the "
+            "daily cron, where waiting on a batch to land beats the saving."
+        ),
+    ),
 ) -> None:
     """Run call extractor over new documents. Requires ANTHROPIC_API_KEY."""
-    from app.extract.run import run_extraction
+    from app.extract.run import run_extraction, run_extraction_batched
 
-    summary = run_extraction(
+    runner = run_extraction_batched if batch else run_extraction
+    summary = runner(
         limit=limit if limit > 0 else None,
         min_segments=min_segments,
         use_two_pass=not one_pass,
         creator_filter=creator,
     )
-    log.info("cli.extract.done", **summary)
+    log.info("cli.extract.done", batch=batch, **summary)
 
 
 @app.command()
