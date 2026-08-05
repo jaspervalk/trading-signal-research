@@ -1732,7 +1732,7 @@ export type PortfolioView = {
   total_market_value: number | null;
   total_market_value_eur: number | null;
   total_unrealized_pnl: number | null;
-  total_realized_pnl: number;
+  total_realized_pnl: number | null;
   eur_usd_rate: number | null;
   quote_errors: string[];
   as_of: string;
@@ -2095,6 +2095,9 @@ function money(value: number | null, currency = "USD") {
   if (value === null) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
 }
+
+// Totals are null whenever they would be misleading — mixed currencies, an
+// unpriced holding, or an unavailable FX rate. Render "—", never a partial sum.
 
 export default function PortfolioPage() {
   const qc = useQueryClient();
