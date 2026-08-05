@@ -91,6 +91,27 @@ def test_delete_missing_trade_raises(session):
         service.delete_trade(session, 4242)
 
 
+def test_delete_buy_that_a_later_sell_depends_on_is_refused(session):
+    buy = service.create_trade(session, _in(qty=10, day=0))
+    service.create_trade(session, _in(side="sell", qty=5, day=1))
+
+    with pytest.raises(LedgerError, match="cannot delete"):
+        service.delete_trade(session, buy.id)
+
+    # Refused delete must not have touched the ledger.
+    assert len(service.list_trades(session)) == 2
+
+
+def test_delete_sell_then_buy_both_succeed(session):
+    buy = service.create_trade(session, _in(qty=10, day=0))
+    sell = service.create_trade(session, _in(side="sell", qty=5, day=1))
+
+    service.delete_trade(session, sell.id)
+    service.delete_trade(session, buy.id)
+
+    assert service.list_trades(session) == []
+
+
 def test_build_view_splits_open_and_closed(session):
     service.create_trade(session, _in(ticker="NVDA", qty=10, day=0))
     service.create_trade(session, _in(ticker="ASML", qty=4, price=800.0, day=0))
@@ -204,6 +225,21 @@ def test_create_trade_accepts_naive_traded_at(session):
     assert row.id is not None
     record = service.to_record(row)
     assert record.traded_at.tzinfo is not None
+
+
+def test_quote_currency_mismatch_leaves_position_unpriced(session, monkeypatch):
+    service.create_trade(session, _in(ticker="NVDA", qty=10, price=100.0, currency="USD"))
+    monkeypatch.setattr(pricing, "_fetch_one", lambda t: pricing.Quote(
+        ticker=t, last_price=150.0, previous_close=140.0,
+        currency="EUR", as_of=pricing._now(),
+    ))
+    pricing.clear_cache()
+
+    view = service.build_portfolio_view(session)
+    [pos] = view.open_positions
+    assert pos.market_value is None
+    assert pos.last_price is None
+    assert "NVDA" in view.quote_errors
 
 
 def test_single_currency_fully_priced_portfolio_has_totals(session):

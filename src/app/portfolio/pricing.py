@@ -82,7 +82,7 @@ def get_quotes(tickers: Iterable[str]) -> dict[str, Quote | None]:
         try:
             quote = _fetch_one(ticker)
         except Exception:  # noqa: BLE001 - one bad symbol must not break the page
-            log.warning("portfolio.pricing.quote_failed", extra={"ticker": ticker})
+            log.warning("portfolio.pricing.quote_failed", ticker=ticker)
             out[ticker] = None
             continue
         _cache[ticker] = (now, quote)

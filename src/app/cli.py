@@ -830,6 +830,19 @@ pf = typer.Typer(no_args_is_help=True, help="Portfolio: manual trade ledger.")
 app.add_typer(pf, name="pf")
 
 
+def pf_cell(value: float | None, width: int) -> str:
+    """Render a position-table cell: right-aligned number, or "—" for None/NaN.
+
+    Module-level (not nested in `pf_list`) so it is importable and unit
+    testable without touching the database — `pf list` itself runs against
+    the real `tsr` DB via `session_scope()`, which the test suite does not
+    override, so exercising the formatting has to happen at this level.
+    """
+    if value is None or value != value:  # NaN check: NaN != NaN
+        return f"{'—':>{width}}"
+    return f"{value:>{width}.2f}"
+
+
 @pf.command("add")
 def pf_add(
     ticker: str = typer.Argument(..., help="Ticker symbol, e.g. NVDA."),
@@ -889,12 +902,13 @@ def pf_list(
     for p in rows:
         typer.echo(
             f"{p.ticker:<8}{p.quantity:>10.4g}"
-            f"{(p.avg_cost or 0):>12.2f}"
-            f"{(p.last_price if p.last_price is not None else float('nan')):>12.2f}"
-            f"{(p.market_value if p.market_value is not None else float('nan')):>14.2f}"
-            f"{(p.unrealized_pnl if p.unrealized_pnl is not None else float('nan')):>14.2f}"
+            f"{pf_cell(p.avg_cost, 12)}"
+            f"{pf_cell(p.last_price, 12)}"
+            f"{pf_cell(p.market_value, 14)}"
+            f"{pf_cell(p.unrealized_pnl, 14)}"
         )
-    typer.echo(f"\nrealized P&L: {view.total_realized_pnl:.2f}")
+    realized = view.total_realized_pnl
+    typer.echo(f"\nrealized P&L: {'—' if realized is None else f'{realized:.2f}'}")
     if view.quote_errors:
         typer.echo(f"no quote for: {', '.join(view.quote_errors)}")
 
@@ -924,12 +938,16 @@ def pf_rm(trade_id: int = typer.Argument(..., help="Trade id from `tsr pf trades
     """Delete a mistaken trade."""
     from app.db import session_scope
     from app.portfolio import service
+    from app.portfolio.ledger import LedgerError
 
     with session_scope() as session:
         try:
             service.delete_trade(session, trade_id)
         except KeyError as exc:
             typer.echo(f"no trade #{trade_id}")
+            raise typer.Exit(code=1) from exc
+        except LedgerError as exc:
+            typer.echo(f"rejected: {exc}")
             raise typer.Exit(code=1) from exc
     typer.echo(f"deleted #{trade_id}")
 

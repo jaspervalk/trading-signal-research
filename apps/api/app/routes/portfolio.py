@@ -22,7 +22,12 @@ def get_portfolio(
     with_quotes: bool = Query(True, description="Fetch live quotes (~15m delayed)."),
     session: Session = Depends(db_session),
 ) -> PortfolioView:
-    return service.build_portfolio_view(session, with_quotes=with_quotes)
+    try:
+        return service.build_portfolio_view(session, with_quotes=with_quotes)
+    except LedgerError as exc:
+        raise HTTPException(
+            422, f"portfolio ledger is inconsistent: {exc}. Fix it from the trade ledger."
+        ) from exc
 
 
 @router.get("/trades", response_model=list[TradeRecord])
@@ -61,3 +66,5 @@ def delete_trade(trade_id: int, session: Session = Depends(db_session)) -> None:
         service.delete_trade(session, trade_id)
     except KeyError as exc:
         raise HTTPException(404, "trade not found") from exc
+    except LedgerError as exc:
+        raise HTTPException(422, str(exc)) from exc

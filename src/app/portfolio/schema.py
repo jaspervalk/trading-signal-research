@@ -37,7 +37,9 @@ class TradeIn(BaseModel):
     side: str
     quantity: float = Field(gt=0)
     price_per_share: float = Field(gt=0)
-    currency: str = Field(default="USD", min_length=3, max_length=3)
+    currency: str = Field(
+        default="USD", min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$"
+    )
     fees: float = Field(default=0.0, ge=0)
     traded_at: datetime
     eur_amount: float | None = Field(default=None, gt=0)
@@ -51,7 +53,9 @@ class TradePatch(BaseModel):
     side: str | None = None
     quantity: float | None = Field(default=None, gt=0)
     price_per_share: float | None = Field(default=None, gt=0)
-    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    currency: str | None = Field(
+        default=None, min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$"
+    )
     fees: float | None = Field(default=None, ge=0)
     traded_at: datetime | None = None
     eur_amount: float | None = Field(default=None, gt=0)

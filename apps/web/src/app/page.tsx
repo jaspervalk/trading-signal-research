@@ -7,7 +7,7 @@ import { Card, CardHeader } from "@/components/Card";
 import { PortfolioTable } from "@/components/PortfolioTable";
 import { TickerSearch } from "@/components/TickerSearch";
 import { TradeLedger } from "@/components/TradeLedger";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 function money(value: number | null, currency = "USD") {
   if (value === null) return "—";
@@ -23,6 +23,9 @@ export default function PortfolioPage() {
     queryKey: ["portfolio"],
     queryFn: () => api.portfolio.get(true),
   });
+
+  const totalsCurrency =
+    data && data.open_positions.length > 0 ? data.open_positions[0].currency : "USD";
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -42,8 +45,14 @@ export default function PortfolioPage() {
       {error && (
         <Card>
           <p className="text-sm text-red-500">
-            Could not reach the API. Start it with{" "}
-            <code>uvicorn apps.api.app.main:app --reload --port 8001</code>.
+            {error instanceof ApiError && error.message ? (
+              error.message
+            ) : (
+              <>
+                Could not reach the API. Start it with{" "}
+                <code>uvicorn apps.api.app.main:app --reload --port 8001</code>.
+              </>
+            )}
           </p>
         </Card>
       )}
@@ -68,10 +77,10 @@ export default function PortfolioPage() {
         {data && (
           <>
             <div className="mb-6 grid gap-4 sm:grid-cols-4">
-              <Stat label="Market value" value={money(data.total_market_value)} />
+              <Stat label="Market value" value={money(data.total_market_value, totalsCurrency)} />
               <Stat label="Market value (EUR)" value={money(data.total_market_value_eur, "EUR")} />
-              <Stat label="Unrealized P&L" value={money(data.total_unrealized_pnl)} />
-              <Stat label="Realized P&L" value={money(data.total_realized_pnl)} />
+              <Stat label="Unrealized P&L" value={money(data.total_unrealized_pnl, totalsCurrency)} />
+              <Stat label="Realized P&L" value={money(data.total_realized_pnl, totalsCurrency)} />
             </div>
             <PortfolioTable positions={data.open_positions} />
             {data.quote_errors.length > 0 && (

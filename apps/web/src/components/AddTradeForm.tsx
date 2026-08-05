@@ -16,6 +16,7 @@ export function AddTradeForm() {
     side: "buy" as "buy" | "sell",
     quantity: "",
     price_per_share: "",
+    currency: "USD",
     traded_at: new Date().toISOString().slice(0, 10),
     fees: "",
     eur_amount: "",
@@ -29,6 +30,7 @@ export function AddTradeForm() {
         side: form.side,
         quantity: Number(form.quantity),
         price_per_share: Number(form.price_per_share),
+        currency: form.currency,
         traded_at: new Date(`${form.traded_at}T00:00:00Z`).toISOString(),
         fees: form.fees ? Number(form.fees) : 0,
         eur_amount: form.eur_amount ? Number(form.eur_amount) : null,
@@ -36,7 +38,16 @@ export function AddTradeForm() {
       }),
     onSuccess: () => {
       setError(null);
-      setForm({ ...form, ticker: "", quantity: "", price_per_share: "", fees: "", eur_amount: "", note: "" });
+      setForm({
+        ...form,
+        ticker: "",
+        quantity: "",
+        price_per_share: "",
+        currency: "USD",
+        fees: "",
+        eur_amount: "",
+        note: "",
+      });
       qc.invalidateQueries({ queryKey: ["portfolio"] });
       qc.invalidateQueries({ queryKey: ["portfolio-trades"] });
     },
@@ -62,6 +73,11 @@ export function AddTradeForm() {
       </select>
       <input required type="number" step="any" min="0.0001" value={form.quantity} onChange={set("quantity")} placeholder="Quantity" className={FIELD} aria-label="Quantity" />
       <input required type="number" step="any" min="0.0001" value={form.price_per_share} onChange={set("price_per_share")} placeholder="Price per share" className={FIELD} aria-label="Price per share" />
+      <select value={form.currency} onChange={set("currency")} className={FIELD} aria-label="Currency">
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="GBP">GBP</option>
+      </select>
       <input required type="date" max={new Date().toISOString().slice(0, 10)} value={form.traded_at} onChange={set("traded_at")} className={FIELD} aria-label="Trade date" />
       <input type="number" step="any" min="0" value={form.fees} onChange={set("fees")} placeholder="Fees (optional)" className={FIELD} aria-label="Fees" />
       <input type="number" step="any" min="0.0001" value={form.eur_amount} onChange={set("eur_amount")} placeholder="EUR total (optional)" className={FIELD} aria-label="EUR total" />

@@ -143,6 +143,15 @@ def delete_trade(session: Session, trade_id: int) -> None:
     row = session.get(PortfolioTrade, trade_id)
     if row is None:
         raise KeyError(trade_id)
+
+    remaining = [r for r in _all_records(session) if r.id != trade_id]
+    try:
+        fold_trades(remaining)
+    except LedgerError as exc:
+        raise LedgerError(
+            f"cannot delete #{trade_id}: the remaining ledger is invalid — {exc}"
+        ) from exc
+
     session.delete(row)
     session.commit()
 
@@ -150,6 +159,11 @@ def delete_trade(session: Session, trade_id: int) -> None:
 def _to_view(position: Position, quote: pricing.Quote | None, rate: float | None) -> PositionView:
     view = PositionView(**position.model_dump())
     if quote is None or quote.last_price is None:
+        return view
+
+    if quote.currency is not None and quote.currency.upper() != position.currency.upper():
+        # The quote is denominated in a different unit than the cost basis —
+        # treat this as unpriced rather than silently mixing currencies.
         return view
 
     view.last_price = quote.last_price
@@ -180,8 +194,18 @@ def build_portfolio_view(session: Session, *, with_quotes: bool = True) -> Portf
     errors: list[str] = []
     if with_quotes and positions:
         open_tickers = [p.ticker for p in positions if p.quantity > EPS]
+        position_currency = {p.ticker: p.currency for p in positions}
         quotes = pricing.get_quotes(open_tickers)
-        errors = [t for t, q in quotes.items() if q is None or q.last_price is None]
+        errors = [
+            t
+            for t, q in quotes.items()
+            if q is None
+            or q.last_price is None
+            or (
+                q.currency is not None
+                and q.currency.upper() != position_currency[t].upper()
+            )
+        ]
         if any(p.currency == "USD" for p in positions):
             rate = pricing.get_eur_usd_rate()
 

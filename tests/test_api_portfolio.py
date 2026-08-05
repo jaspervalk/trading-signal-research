@@ -96,6 +96,11 @@ def test_negative_quantity_returns_422(client):
     assert r.status_code == 422
 
 
+def test_malformed_currency_returns_422(client):
+    r = client.post("/portfolio/trades", json=_payload(currency="12A"))
+    assert r.status_code == 422
+
+
 def test_patch_trade(client):
     trade_id = client.post("/portfolio/trades", json=_payload()).json()["id"]
     r = client.patch(f"/portfolio/trades/{trade_id}", json={"quantity": 20})
@@ -115,3 +120,18 @@ def test_delete_trade(client):
 
 def test_delete_missing_trade_returns_404(client):
     assert client.delete("/portfolio/trades/999").status_code == 404
+
+
+def test_delete_buy_that_a_later_sell_depends_on_returns_422(client):
+    buy_id = client.post("/portfolio/trades", json=_payload(quantity=10)).json()["id"]
+    client.post(
+        "/portfolio/trades",
+        json=_payload(side="sell", quantity=5, traded_at=(BASE + timedelta(days=1)).isoformat()),
+    )
+
+    r = client.delete(f"/portfolio/trades/{buy_id}")
+    assert r.status_code == 422
+    assert "cannot delete" in r.json()["detail"]
+
+    # The refused delete must not have removed the trade.
+    assert len(client.get("/portfolio/trades").json()) == 2

@@ -67,7 +67,7 @@ src/app/
 **Staged execution (not part of this ADR's commitment, tracked in the roadmap):**
 1. Plan 1 — stabilize and clean: commit the four dirty work threads, delete dead code/junk, real CI, this ADR.
 2. Plan 2 — Analysis consolidation: one `marketdata` client, one universe module (fixes `BRK-B`/`BRK.B`, kills duplicate `load_universe`), screener imports `analysis/indicators`, screener gets an API route + web page, ticker page/nav re-centered on quant with the creator rail collapsible.
-3. Plan 3 — Portfolio Manager: greenfield tables + migration, `tsr pf` CLI namespace, FastAPI `portfolio` router, `/portfolio` web page, the scan-priority/invalidation-alert bridge into Analysis. (**Shipped ahead of Plan 2 at the owner's request**, 2026-08-04.)
+3. Plan 3 — Portfolio Manager: greenfield tables + migration, `tsr pf` CLI namespace, FastAPI `portfolio` router, `/` web page. (**Shipped ahead of Plan 2 at the owner's request**, 2026-08-04.) The scan-priority/invalidation-alert bridge into Analysis was scoped for this plan but was **not** implemented — still pending.
 4. Plan 4 — side-feature packaging + docs: creator pipeline behind a source-agnostic seam, `architecture.md` rewritten from scratch, CLAUDE.md/README refreshed, ops decision on reviving the daily cron.
 
 **Architectural:**
