@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.config import REPO_ROOT
+from app.marketdata.symbols import canonical_symbol, symbol_variants
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,38 @@ class Universe:
     # lowercase company-name token → canonical ticker
     name_to_ticker: dict[str, str] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Canonicalise keys on construction, not just on the CSV load path.
+
+        `has()` canonicalises the query, so keys must be canonical too or the
+        two never meet. Doing it here means the invariant holds however the
+        Universe was built — loaded from CSV, assembled in a test, or
+        constructed inline — rather than only when it came through
+        `load_universe`.
+        """
+        self.by_ticker = {canonical_symbol(k): v for k, v in self.by_ticker.items()}
+        self.name_to_ticker = {
+            name: canonical_symbol(t) for name, t in self.name_to_ticker.items()
+        }
+
     @property
     def tickers(self) -> set[str]:
         return set(self.by_ticker.keys())
 
     def has(self, ticker: str) -> bool:
-        return ticker.upper() in self.by_ticker
+        """Membership, tolerant of share-class spelling on both sides.
+
+        Matches on the variant set rather than assuming canonical keys:
+        `by_ticker` is a plain mutable dict that callers populate directly
+        after construction, so `__post_init__` cannot guarantee the keys stay
+        canonical. Comparing variants makes membership correct however the
+        dict was filled, and whichever spelling the caller asks with.
+
+        The alternative is the bug this replaced: a call that validates
+        against the universe, then fetches no bars and vanishes without ever
+        raising.
+        """
+        return bool(symbol_variants(ticker) & self.by_ticker.keys())
 
 
 # Conservative ASR-confusion map. Add entries only after seeing real false-negatives.
@@ -127,7 +154,9 @@ def load_universe(path: Path | None = None) -> Universe:
     with path.open() as f:
         reader = csv.DictReader(f)
         for row in reader:
-            ticker = (row.get("ticker") or "").strip().upper()
+            # Store canonically so `by_ticker` keys match what the market
+            # layer will actually request, whichever spelling the CSV uses.
+            ticker = canonical_symbol(row.get("ticker") or "")
             if not ticker:
                 continue
             u.by_ticker[ticker] = {
@@ -153,7 +182,10 @@ def detect_tickers(text: str, universe: Universe) -> list[TickerMention]:
 
     # 1. $-prefixed
     for m in _DOLLAR_TICKER.finditer(text):
-        ticker = m.group(1).upper()
+        # A transcript writes "$BRK.B"; everything downstream — the stored
+        # ExtractedCall.ticker, the market lookup, the cache key — needs the
+        # canonical form, so normalise at the point of detection.
+        ticker = canonical_symbol(m.group(1))
         if not universe.has(ticker):
             continue
         key = (ticker, m.start())
@@ -174,7 +206,7 @@ def detect_tickers(text: str, universe: Universe) -> list[TickerMention]:
     # NB: ASR usually doesn't capitalize, so this hits user-typed
     # descriptions / titles / chat messages more than transcripts.
     for m in _CASED_TOKEN.finditer(text):
-        token = m.group(0).upper()
+        token = canonical_symbol(m.group(0))
         if not universe.has(token):
             continue
         # Skip if this is the inside of a $-prefix already captured.

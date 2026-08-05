@@ -106,6 +106,14 @@ def test_empty_input():
 
 
 def test_dot_ticker():
+    """A transcript's `$BRK.B` is detected, and reported canonically.
+
+    The mention carries `BRK-B` — the market-facing spelling — because this
+    ticker flows into `ExtractedCall.ticker` and from there into yfinance,
+    which returns nothing for the dot form. `matched_text` keeps the original
+    so the evidence quote still matches the source verbatim (ADR 0002).
+    """
     u = _toy_universe()
     ms = detect_tickers("$BRK.B is on the watchlist", u)
-    assert any(m.ticker == "BRK.B" and m.method == "dollar" for m in ms)
+    assert any(m.ticker == "BRK-B" and m.method == "dollar" for m in ms)
+    assert any(m.matched_text == "$BRK.B" for m in ms)

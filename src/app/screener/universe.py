@@ -15,6 +15,7 @@ from pathlib import Path
 
 from app.config import REPO_ROOT
 from app.logging import get_logger
+from app.marketdata.symbols import canonical_symbol
 
 log = get_logger(__name__)
 
@@ -47,7 +48,9 @@ def load_universe(
     with path.open() as f:
         reader = csv.DictReader(f)
         for row in reader:
-            t = (row.get("ticker") or "").strip().upper()
+            # Canonical (dash) form — the screener fetches these straight from
+            # yfinance, which does not recognise `BRK.B`.
+            t = canonical_symbol(row.get("ticker") or "")
             if not t:
                 continue
             entry = UniverseEntry(
@@ -77,8 +80,8 @@ def fetch_from_wikipedia() -> list[UniverseEntry]:
     sp_tables = pd.read_html(SP500_WIKI_URL)
     sp = sp_tables[0]  # first table = constituents
     sp_entries = {
-        str(row["Symbol"]).strip().upper().replace(".", "-"): UniverseEntry(
-            ticker=str(row["Symbol"]).strip().upper().replace(".", "-"),
+        canonical_symbol(str(row["Symbol"])): UniverseEntry(
+            ticker=canonical_symbol(str(row["Symbol"])),
             name=str(row.get("Security", "")).strip(),
             sector=str(row.get("GICS Sector", "")).strip(),
             source="sp500",
@@ -109,7 +112,7 @@ def fetch_from_wikipedia() -> list[UniverseEntry]:
 
     merged: dict[str, UniverseEntry] = dict(sp_entries)
     for _, row in ndx_df.iterrows():
-        t = str(row[ticker_col]).strip().upper().replace(".", "-")
+        t = canonical_symbol(str(row[ticker_col]))
         if not t:
             continue
         if t in merged:

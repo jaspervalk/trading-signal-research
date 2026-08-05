@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
+
+from app.marketdata.symbols import canonical_symbol
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import REPO_ROOT
@@ -26,8 +28,15 @@ _CACHE_DIR = REPO_ROOT / "data" / "cache" / "prices"
 
 
 def _cache_path(ticker: str) -> Path:
+    """Cache file for `ticker`, keyed on the canonical symbol.
+
+    Keyed canonically so `BRK.B` and `BRK-B` share one file. Previously the
+    dot form was rewritten to `BRK_B.parquet` and the dash form to
+    `BRK-B.parquet` — two caches for one company, each half-populated
+    depending on which caller warmed it.
+    """
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    safe = ticker.replace("/", "_").replace(".", "_")
+    safe = canonical_symbol(ticker).replace("/", "_")
     return _CACHE_DIR / f"{safe}.parquet"
 
 
@@ -61,6 +70,9 @@ def _save_cached(ticker: str, df: pd.DataFrame) -> None:
 def _fetch_yf(
     ticker: str, start: datetime, end: datetime, *, interval: str = "1d"
 ) -> pd.DataFrame:
+    # yfinance recognises the dash form only; asking for `BRK.B` returns an
+    # empty frame with no error, which downstream reads as "no bars".
+    ticker = canonical_symbol(ticker)
     log.info("yfinance.fetch", ticker=ticker, start=str(start.date()), end=str(end.date()), interval=interval)
     raw = yf.download(
         ticker,

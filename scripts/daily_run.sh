@@ -83,7 +83,14 @@ stage "backtest" "$TSR" backtest || failed=1
 
 # Compute realized lens outcomes for snapshots whose horizons elapsed.
 # Best-effort — failure should not block the rest of the pipeline.
-stage "score-lens-outcomes" "$TSR" score-lens-outcomes --max-age-days 60 || \
+#
+# The window is deliberately far wider than the daily cadence needs. Scoring is
+# idempotent (already-scored (snapshot, horizon) pairs are skipped), so a wide
+# window costs nothing on a healthy day — but a narrow one silently discards
+# data whenever the cron stops. This job was dead from 2026-05-04 to 2026-08-05;
+# under the previous --max-age-days 60 every snapshot in that gap would have
+# aged out unscored and been skipped forever on resume. Keep this generous.
+stage "score-lens-outcomes" "$TSR" score-lens-outcomes --max-age-days 400 || \
     echo "[$(ts)] warn: lens outcome scoring failed; continuing" >> "$LOG_FILE"
 
 stage "score"    "$TSR" score || failed=1
