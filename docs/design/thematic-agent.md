@@ -1,6 +1,6 @@
 # Thematic / supply-chain research agent — design evaluation
 
-**Status:** evaluation only. No implementation. Awaiting go/no-go.
+**Status:** Steps 1-2 implemented 2026-08-05 (see §5.1). Step 3 (thematic lens) deferred — open questions in §7 unanswered.
 **Date:** 2026-08-05
 **Author:** design pass over the existing Deep-research stack.
 
@@ -232,6 +232,14 @@ Pass `PanelDigest` to the judge and require that its `bull_case`/`bear_case` cit
 
 **Step 3 — One thematic lens, enrichment direction only.**
 A fifth analyst, `thematic`, receiving `PanelDigest` + the cached theme brief, with a reconciliation remit: *does the narrative justify the multiple the market is already paying?* Plus the deterministic valuation candidate from §4.3.
+
+**Shipped 2026-08-05 (Steps 1-2):** `ttl_cache` replacing the two unbounded
+`lru_cache`s (15min metadata / 6h earnings); `ValuationPanel.fetched_at`;
+`PanelDigest` with per-field unit tags and an explicit `missing` list;
+structural output limits enforced in Pydantic and mirrored into the tool
+schemas; and the valuation block with peer-comparison sub-block passed to
+the judge for reconciliation. Step 3 remains unbuilt: no thematic lens, no
+theme brief, no theme cache tables, and no valuation-derived price level.
 
 ### 5.2 Explicitly out of scope for v1
 
