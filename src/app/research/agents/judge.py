@@ -28,7 +28,7 @@ from typing import Any
 
 from anthropic import Anthropic
 
-from app.analysis.digest import PanelDigest
+from app.analysis.digest import PanelDigest, render_measure
 from app.analysis.schema import CONFIDENCE_LEVELS
 from app.config import load_env
 from app.logging import get_logger
@@ -293,12 +293,22 @@ def _valuation_block_for(digest: PanelDigest | None) -> str:
     """Render the digest's valuation measures, naming what was unavailable.
 
     A reader that sees only present fields cannot tell a missing multiple
-    from a healthy one, so absent fields are listed explicitly.
+    from a healthy one, so absent fields are listed explicitly. The
+    unavailable list is appended to the *valuation* block before the peer
+    sub-block is concatenated, so it stays visually attached to the section
+    it describes instead of trailing the peer group and reading as if it
+    belonged there.
     """
     if digest is None:
         return "(valuation context not available for this run)"
 
     block = digest.valuation_block()
+
+    absent = [
+        f.split(".", 1)[1] for f in digest.missing if f.startswith("valuation.")
+    ]
+    if absent:
+        block = f"{block}\n(unavailable, do not infer: {', '.join(absent)})"
 
     peer_rows = [m for m in digest.measures if m.field.startswith("peers.")]
     if peer_rows:
@@ -307,17 +317,9 @@ def _valuation_block_for(digest: PanelDigest | None) -> str:
             "Peer group (use these as the comparison anchor — do not"
             " substitute a remembered sector average):",
         ]
-        for m in peer_rows:
-            name = m.field.split(".", 1)[1]
-            rendered = f"{m.value:,.4g}" if isinstance(m.value, float) else str(m.value)
-            lines.append(f"- {name}: {rendered} ({m.unit})")
+        lines.extend(render_measure(m) for m in peer_rows)
         block = block + "\n" + "\n".join(lines)
 
-    absent = [
-        f.split(".", 1)[1] for f in digest.missing if f.startswith("valuation.")
-    ]
-    if absent:
-        block = f"{block}\n(unavailable, do not infer: {', '.join(absent)})"
     return block
 
 

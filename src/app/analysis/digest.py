@@ -1,11 +1,14 @@
 """Flatten the ticker panels into self-describing, citable measures.
 
 Three unit conventions coexist in this codebase and none of them are marked
-on the models: most rates are fractions (0.25 = 25%), `dividend_yield` alone
-arrives from yfinance already multiplied (0.38 = 0.38%), and prices, market
-caps and share counts are absolutes. `rsi_14` is a 0-100 index. Anything
-serialising these to a consumer that cannot see the source — an LLM, an
-export, another service — will misread them by 100x sooner or later.
+on the models: most rates are fractions (0.25 = 25%), `dividend_yield` is
+*usually* pre-multiplied by yfinance (0.38 = 0.38%) but not reliably so, and
+prices, market caps and share counts are absolutes. `rsi_14` is a 0-100
+index. Anything serialising these to a consumer that cannot see the source —
+an LLM, an export, another service — will misread them by 100x sooner or
+later. `dividend_yield` is normalised (see `_normalize_dividend_yield`)
+before it is tagged, so its "percent" unit is true by construction rather
+than an assertion resting on an unreliable upstream convention.
 
 A `PanelDigest` is a flat list of `Measure` rows. Each carries its dotted
 field path (which doubles as a citation key), its unit, and the age of the
@@ -16,7 +19,7 @@ dropped, so absence is visible rather than inferred.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Callable, Literal
 
 from pydantic import BaseModel
 
@@ -51,8 +54,11 @@ _VALUATION_FIELDS: tuple[tuple[str, Unit], ...] = (
     ("short_pct_of_float", "fraction"),
     ("held_pct_institutions", "fraction"),
     ("beta", "ratio"),
-    # yfinance returns dividendYield pre-multiplied. This is the one field
-    # in the panel that is NOT a fraction; mislabelling it is a 100x error.
+    # yfinance's dividendYield convention is unreliable: usually pre-multiplied
+    # (0.38 == 0.38%), occasionally a bare fraction. `_normalize_dividend_yield`
+    # (consulted via `_NORMALISERS` in `_collect`) coerces it to percent before
+    # this tag is applied, so "percent" is true by construction rather than
+    # merely asserted — see its docstring for the heuristic.
     ("dividend_yield", "percent"),
     ("days_to_next_earnings", "days"),
     ("sector", "categorical"),
@@ -121,6 +127,28 @@ _PEER_FIELDS: tuple[tuple[str, Unit], ...] = (
 )
 
 
+def _normalize_dividend_yield(value: float) -> float:
+    """Coerce yfinance's inconsistent dividendYield to a true percent.
+
+    yfinance returns this field pre-multiplied for most tickers (0.38 == 0.38%)
+    but as a fraction for some. The web layer applies the same heuristic in
+    ValuationPanel.tsx. Normalising here — rather than tagging and hoping —
+    is what makes the "percent" unit true rather than merely asserted.
+
+    A real yield below 0.05% is not plausible for a dividend payer, so a value
+    under that threshold is read as a fraction and scaled.
+    """
+    return value * 100 if 0 < value < 0.05 else value
+
+
+# Per-field normalisers, keyed by the dotted `path` (`prefix.name`), applied
+# inside `_collect` before a Measure is built. Only fields whose upstream
+# convention is unreliable belong here — see `_normalize_dividend_yield`.
+_NORMALISERS: dict[str, Callable[[float], float]] = {
+    "valuation.dividend_yield": _normalize_dividend_yield,
+}
+
+
 class Measure(BaseModel):
     """One panel field, self-describing.
 
@@ -133,6 +161,26 @@ class Measure(BaseModel):
     value: float | int | str | None
     unit: Unit
     as_of: datetime
+
+
+def render_measure(m: Measure) -> str:
+    """One canonical rendering for a measure line, shared by every prompt
+    surface so the same number never appears in two formats.
+
+    Floats render via `.4g` (so e.g. 0.38 stays "0.38", 1234.5 stays "1.23e+03"
+    -> avoided below since valuation numbers are rarely that large, but the
+    guard matters for whole numbers: `.4g` strips trailing zeros (30.0 ->
+    "30"), which reads as an int and loses the "this is a measured float"
+    signal, so whole-valued floats are re-rendered with one decimal place.
+    """
+    if isinstance(m.value, float):
+        rendered = f"{m.value:,.4g}"
+        if "." not in rendered and "e" not in rendered and "E" not in rendered:
+            rendered = f"{m.value:,.1f}"
+    else:
+        rendered = str(m.value)
+    name = m.field.split(".", 1)[1] if "." in m.field else m.field
+    return f"- {name}: {rendered} ({m.unit})"
 
 
 class PanelDigest(BaseModel):
@@ -163,18 +211,7 @@ class PanelDigest(BaseModel):
         if not rows:
             return "(no valuation data available for this ticker)"
 
-        lines: list[str] = []
-        for m in rows:
-            name = m.field.split(".", 1)[1]
-            if isinstance(m.value, float):
-                rendered = f"{m.value:,.4g}"
-                # `.4g` strips trailing zeros (30.0 -> "30"), which reads as
-                # an int and loses the "this is a measured float" signal.
-                if "." not in rendered and "e" not in rendered and "E" not in rendered:
-                    rendered += ".0"
-            else:
-                rendered = str(m.value)
-            lines.append(f"- {name}: {rendered} ({m.unit})")
+        lines: list[str] = [render_measure(m) for m in rows]
 
         stamp = max(m.as_of for m in rows)
         lines.append(f"(valuation as of {stamp.isoformat()})")
@@ -195,6 +232,9 @@ def _collect(
         if value is None or (isinstance(value, str) and not value.strip()):
             missing.append(path)
             continue
+        normalize = _NORMALISERS.get(path)
+        if normalize is not None and isinstance(value, float):
+            value = normalize(value)
         measures.append(Measure(field=path, value=value, unit=unit, as_of=as_of))
 
 
@@ -234,4 +274,4 @@ def build_panel_digest(
     )
 
 
-__all__ = ["Measure", "PanelDigest", "Unit", "build_panel_digest"]
+__all__ = ["Measure", "PanelDigest", "Unit", "build_panel_digest", "render_measure"]

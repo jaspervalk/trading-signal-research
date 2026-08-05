@@ -63,6 +63,11 @@ def test_user_template_has_a_valuation_slot():
 def test_system_prompt_instructs_reconciliation():
     prompt = judge_mod.SYSTEM_PROMPT.lower()
     assert "valuation" in prompt
+    # Rule 7 must actually direct reconciliation + citation, not merely
+    # mention the word "valuation" in passing (that would also pass if the
+    # rule said "ignore valuation").
+    assert "reconcile" in prompt
+    assert "cite" in prompt
 
 
 def test_formatted_message_contains_the_valuation_numbers():
@@ -122,3 +127,15 @@ def test_valuation_block_has_no_peer_heading_when_peers_absent():
     block = judge_mod._valuation_block_for(digest)
     assert "Peer group" not in block
     assert "forward_pe" in block
+
+
+def test_unavailable_valuation_list_precedes_the_peer_section():
+    """The company-valuation absence list must sit under the valuation
+    section it describes, not trail the peer block — otherwise a reader
+    must infer from bare field names (e.g. `trailing_pe`) which section an
+    "unavailable" note belongs to."""
+    digest = build_panel_digest(_view(), peers=_stub_peers())
+    block = judge_mod._valuation_block_for(digest)
+    assert "unavailable" in block
+    assert "Peer group" in block
+    assert block.index("unavailable") < block.index("Peer group")

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.analysis.digest import Measure, PanelDigest, build_panel_digest
+import pytest
+
+from app.analysis.digest import Measure, PanelDigest, build_panel_digest, render_measure
 from app.analysis.schema import (
     ActionSignal,
     DecisionSupportStatus,
@@ -143,9 +145,17 @@ def test_valuation_without_fetched_at_falls_back_to_view_as_of():
 
 
 def test_digest_handles_a_fully_empty_view():
+    """`_empty_view` bare-constructs every data-bearing panel, but
+    `IndicatorPanel()` defaults `ma_alignment` to the real categorical value
+    "insufficient" rather than None — that field is legitimately present, not
+    missing, so it is the one measure a "fully empty" view still produces.
+    Every other field on the bare panels defaults to None and lands in
+    `missing`.
+    """
     view = _empty_view("EMPTY")
     d = build_panel_digest(view)
-    assert d.measures == [] or all(m.value is not None for m in d.measures)
+    assert [m.field for m in d.measures] == ["indicators.ma_alignment"]
+    assert d.measures[0].value == "insufficient"
     assert "valuation.forward_pe" in d.missing
 
 
@@ -174,6 +184,63 @@ def test_measure_rejects_an_unknown_unit():
 
     with pytest.raises(pydantic.ValidationError):
         Measure(field="x.y", value=1.0, unit="furlongs", as_of=AS_OF)
+
+
+def test_dividend_yield_pre_multiplied_form_passes_through_unchanged():
+    """0.38 already reads as 0.38% — the common yfinance form — so the
+    normaliser must leave it alone."""
+    d = build_panel_digest(_view(valuation=ValuationPanel(dividend_yield=0.38, fetched_at=AS_OF)))
+    m = d.by_field()["valuation.dividend_yield"]
+    assert m.value == 0.38
+    assert m.unit == "percent"
+
+
+def test_dividend_yield_fraction_form_is_scaled_to_percent():
+    """Some tickers return dividendYield as a bare fraction (0.0038 == 0.38%).
+    The normaliser must catch that case so the "percent" tag stays true."""
+    d = build_panel_digest(_view(valuation=ValuationPanel(dividend_yield=0.0038, fetched_at=AS_OF)))
+    m = d.by_field()["valuation.dividend_yield"]
+    assert m.value == pytest.approx(0.38)
+    assert m.unit == "percent"
+
+
+def test_dividend_yield_zero_is_left_at_zero():
+    """Guard the `0 <` bound in the normaliser: a zero yield must not be
+    scaled (0 * 100 is still 0, but the guard exists so this stays explicit).
+    `_collect` only treats None/blank-string as missing, so a real 0.0 value
+    is collected as a measure, not dropped into `missing`."""
+    d = build_panel_digest(_view(valuation=ValuationPanel(dividend_yield=0.0, fetched_at=AS_OF)))
+    by_field = d.by_field()
+    assert "valuation.dividend_yield" in by_field
+    m = by_field["valuation.dividend_yield"]
+    assert m.value == 0.0
+    assert m.unit == "percent"
+
+
+def test_dividend_yield_normaliser_does_not_affect_other_fields():
+    """The normaliser map is keyed by dotted path, so a coincidentally
+    small value on an unrelated field must not be rescaled."""
+    d = build_panel_digest(
+        _view(valuation=ValuationPanel(revenue_growth_yoy=0.001, fetched_at=AS_OF))
+    )
+    m = d.by_field()["valuation.revenue_growth_yoy"]
+    assert m.value == 0.001
+    assert m.unit == "fraction"
+
+
+def test_render_measure_matches_across_valuation_and_peer_surfaces():
+    """`render_measure` is the one canonical formatter — a float-valued
+    valuation measure and a float-valued peer measure must render with the
+    identical convention (used by both `valuation_block()` and the judge's
+    peer loop)."""
+    valuation_measure = Measure(
+        field="valuation.forward_pe", value=41.0, unit="ratio", as_of=AS_OF
+    )
+    peer_measure = Measure(
+        field="peers.median_forward_pe", value=18.0, unit="ratio", as_of=AS_OF
+    )
+    assert render_measure(valuation_measure) == "- forward_pe: 41.0 (ratio)"
+    assert render_measure(peer_measure) == "- median_forward_pe: 18.0 (ratio)"
 
 
 def test_digest_is_json_serialisable():
