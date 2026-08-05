@@ -715,10 +715,92 @@ export type GoldLabel = {
   updated_at: string;
 };
 
+// ---------------------------------------------------------------------------
+// Portfolio (Task 5's endpoints — manual trade ledger + live positions).
+
+export type PortfolioTrade = {
+  id: number;
+  ticker: string;
+  side: "buy" | "sell";
+  quantity: number;
+  price_per_share: number;
+  currency: string;
+  fees: number;
+  traded_at: string;
+  eur_amount: number | null;
+  note: string | null;
+};
+
+export type PositionView = {
+  ticker: string;
+  currency: string;
+  quantity: number;
+  avg_cost: number | null;
+  cost_basis: number;
+  realized_pnl: number;
+  eur_avg_cost: number | null;
+  eur_cost_basis: number | null;
+  eur_realized_pnl: number | null;
+  first_traded_at: string;
+  last_traded_at: string;
+  trade_count: number;
+  last_price: number | null;
+  previous_close: number | null;
+  market_value: number | null;
+  market_value_eur: number | null;
+  unrealized_pnl: number | null;
+  unrealized_pct: number | null;
+  day_change_pct: number | null;
+};
+
+export type PortfolioView = {
+  open_positions: PositionView[];
+  closed_positions: PositionView[];
+  total_market_value: number | null;
+  total_market_value_eur: number | null;
+  total_unrealized_pnl: number | null;
+  total_realized_pnl: number | null;
+  eur_usd_rate: number | null;
+  quote_errors: string[];
+  as_of: string;
+};
+
+export type TradeInput = {
+  ticker: string;
+  side: "buy" | "sell";
+  quantity: number;
+  price_per_share: number;
+  currency?: string;
+  fees?: number;
+  traded_at: string;
+  eur_amount?: number | null;
+  note?: string | null;
+};
+
 // ---------- Endpoints ----------
 
 export const api = {
   health: () => request<{ status: string }>("/health"),
+  portfolio: {
+    get: (withQuotes = true) =>
+      request<PortfolioView>(`/portfolio?with_quotes=${withQuotes}`),
+    trades: (ticker?: string) =>
+      request<PortfolioTrade[]>(
+        `/portfolio/trades${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ""}`,
+      ),
+    addTrade: (body: TradeInput) =>
+      request<PortfolioTrade>("/portfolio/trades", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    updateTrade: (id: number, body: Partial<TradeInput>) =>
+      request<PortfolioTrade>(`/portfolio/trades/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    deleteTrade: (id: number) =>
+      request<void>(`/portfolio/trades/${id}`, { method: "DELETE" }),
+  },
   creators: {
     list: (activeOnly = false) =>
       request<Creator[]>(`/creators${activeOnly ? "?active_only=true" : ""}`),
