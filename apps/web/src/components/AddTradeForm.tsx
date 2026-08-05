@@ -60,11 +60,11 @@ export function AddTradeForm() {
         <option value="buy">Buy</option>
         <option value="sell">Sell</option>
       </select>
-      <input required type="number" step="any" min="0" value={form.quantity} onChange={set("quantity")} placeholder="Quantity" className={FIELD} aria-label="Quantity" />
-      <input required type="number" step="any" min="0" value={form.price_per_share} onChange={set("price_per_share")} placeholder="Price per share" className={FIELD} aria-label="Price per share" />
-      <input required type="date" value={form.traded_at} onChange={set("traded_at")} className={FIELD} aria-label="Trade date" />
+      <input required type="number" step="any" min="0.0001" value={form.quantity} onChange={set("quantity")} placeholder="Quantity" className={FIELD} aria-label="Quantity" />
+      <input required type="number" step="any" min="0.0001" value={form.price_per_share} onChange={set("price_per_share")} placeholder="Price per share" className={FIELD} aria-label="Price per share" />
+      <input required type="date" max={new Date().toISOString().slice(0, 10)} value={form.traded_at} onChange={set("traded_at")} className={FIELD} aria-label="Trade date" />
       <input type="number" step="any" min="0" value={form.fees} onChange={set("fees")} placeholder="Fees (optional)" className={FIELD} aria-label="Fees" />
-      <input type="number" step="any" min="0" value={form.eur_amount} onChange={set("eur_amount")} placeholder="EUR total (optional)" className={FIELD} aria-label="EUR total" />
+      <input type="number" step="any" min="0.0001" value={form.eur_amount} onChange={set("eur_amount")} placeholder="EUR total (optional)" className={FIELD} aria-label="EUR total" />
       <input value={form.note} onChange={set("note")} placeholder="Note (optional)" className={FIELD} aria-label="Note" />
 
       <div className="sm:col-span-4 flex items-center gap-3">

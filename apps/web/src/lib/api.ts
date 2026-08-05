@@ -28,7 +28,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body?.detail || JSON.stringify(body);
+      const raw = body?.detail;
+      if (typeof raw === "string") {
+        detail = raw;
+      } else if (Array.isArray(raw)) {
+        // FastAPI/Pydantic validation errors: [{loc: [...], msg: "..."}]
+        detail = raw
+          .map((e: { loc?: (string | number)[]; msg?: string }) => {
+            const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : undefined;
+            return field ? `${field}: ${e.msg ?? "invalid"}` : (e.msg ?? "invalid");
+          })
+          .join("; ");
+      } else if (raw) {
+        detail = JSON.stringify(raw);
+      } else {
+        detail = JSON.stringify(body);
+      }
     } catch {
       /* ignore */
     }
