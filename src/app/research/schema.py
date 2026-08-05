@@ -25,10 +25,39 @@ def _wrap_bare_string(v):
         return [v]
     return v
 
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _clamp_items(v: object) -> object:
+    """Wrap a bare string, cap the list length, and truncate long entries."""
+    v = _wrap_bare_string(v)
+    if not isinstance(v, list):
+        return v
+    out = []
+    for item in v[:MAX_CASE_ITEMS]:
+        out.append(_truncate(item, MAX_POINT_CHARS) if isinstance(item, str) else item)
+    return out
+
+
+def _clamp_summary(v: object) -> object:
+    return _truncate(v, MAX_SUMMARY_CHARS) if isinstance(v, str) else v
+
 # Vocabulary kept small and string-typed so the JSON shape is frontend-agnostic.
 PLAN_MODES = ("quick", "deep")
 CONFIDENCE = ("low", "medium", "high")
 TIMEFRAMES = ("1-3d", "5-15d", "2-6w")
+
+# Output limits. These existed only as prose in the prompts ("≤25 words",
+# "3-5 bullets") while the tool schemas allowed up to 8 items and unbounded
+# strings. Clamped here rather than rejected: dropping a whole plan because
+# one bullet ran long would be worse than truncating the bullet.
+MAX_SUMMARY_CHARS = 240
+MAX_POINT_CHARS = 400
+MAX_CASE_ITEMS = 5
 
 # Multi-lens analyst panel (see docs/entry-exit-research-plan.md §multi-lens).
 # Each lens independently assesses the setup; the union is what drives
@@ -111,9 +140,9 @@ class LensView(BaseModel):
     revised_points: list[str] = Field(default_factory=list)
     responded_to: list[str] = Field(default_factory=list)  # lens names this analyst engaged with
 
-    _wrap_points = field_validator("points", "revised_points", "responded_to", mode="before")(
-        _wrap_bare_string
-    )
+    _clamp_points = field_validator("points", "revised_points", mode="before")(_clamp_items)
+    _wrap_responded = field_validator("responded_to", mode="before")(_wrap_bare_string)
+    _clamp_summaries = field_validator("summary", "revised_summary", mode="before")(_clamp_summary)
 
 
 @dataclass
@@ -248,9 +277,10 @@ class EntryExitPlan(BaseModel):
         "The user evaluates and pulls the trigger; this system does not execute orders."
     )
 
-    _wrap_prose = field_validator(
-        "bull_case", "bear_case", "key_risks", "sources_used", mode="before"
-    )(_wrap_bare_string)
+    _clamp_prose = field_validator(
+        "bull_case", "bear_case", "key_risks", mode="before"
+    )(_clamp_items)
+    _wrap_sources = field_validator("sources_used", mode="before")(_wrap_bare_string)
 
 
 RANKS = ("high", "medium", "low", "skip")

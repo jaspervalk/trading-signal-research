@@ -17,7 +17,14 @@ from anthropic import Anthropic
 
 from app.config import load_env
 from app.logging import get_logger
-from app.research.schema import CONFIDENCE, LENS_NAMES, LensView
+from app.research.schema import (
+    CONFIDENCE,
+    LENS_NAMES,
+    MAX_CASE_ITEMS,
+    MAX_POINT_CHARS,
+    MAX_SUMMARY_CHARS,
+    LensView,
+)
 
 log = get_logger(__name__)
 
@@ -46,7 +53,7 @@ class AgentResult:
     error: str | None = None
 
 
-def _lens_tool_input_schema(name: str) -> dict[str, Any]:
+def _lens_tool_input_schema(name: str = "") -> dict[str, Any]:
     """JSON schema for an analyst's `submit_lens` tool call."""
     return {
         "type": "object",
@@ -60,13 +67,14 @@ def _lens_tool_input_schema(name: str) -> dict[str, Any]:
             "conviction": {"type": "string", "enum": list(CONFIDENCE)},
             "summary": {
                 "type": "string",
+                "maxLength": MAX_SUMMARY_CHARS,
                 "description": "One-line headline read (≤ 25 words).",
             },
             "points": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {"type": "string", "maxLength": MAX_POINT_CHARS},
                 "minItems": 2,
-                "maxItems": 4,
+                "maxItems": MAX_CASE_ITEMS,
                 "description": "2-4 supporting bullet points grounded in your context only.",
             },
         },
