@@ -826,5 +826,109 @@ def screen_refresh_universe(
     typer.echo(f"Wrote {len(entries)} tickers to {path}")
 
 
+pf = typer.Typer(no_args_is_help=True, help="Portfolio: manual trade ledger.")
+app.add_typer(pf, name="pf")
+
+
+@pf.command("add")
+def pf_add(
+    ticker: str = typer.Argument(..., help="Ticker symbol, e.g. NVDA."),
+    side: str = typer.Option(..., "--side", help="buy | sell"),
+    qty: float = typer.Option(..., "--qty", help="Number of shares (fractional allowed)."),
+    price: float = typer.Option(..., "--price", help="Price per share, native currency."),
+    date: str = typer.Option(..., "--date", help="Trade date, YYYY-MM-DD."),
+    currency: str = typer.Option("USD", "--currency", help="Native currency of the stock."),
+    fees: float = typer.Option(0.0, "--fees", help="Commission/fees in native currency."),
+    eur: float | None = typer.Option(None, "--eur", help="All-in EUR total that moved."),
+    note: str | None = typer.Option(None, "--note"),
+) -> None:
+    """Record a trade."""
+    from datetime import datetime, timezone
+
+    from app.db import session_scope
+    from app.portfolio import service
+    from app.portfolio.ledger import LedgerError
+    from app.portfolio.schema import TradeIn
+
+    traded_at = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    payload = TradeIn(
+        ticker=ticker, side=side, quantity=qty, price_per_share=price,
+        currency=currency, fees=fees, traded_at=traded_at, eur_amount=eur, note=note,
+    )
+    with session_scope() as session:
+        try:
+            row = service.create_trade(session, payload)
+        except LedgerError as exc:
+            typer.echo(f"rejected: {exc}")
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"recorded #{row.id}: {row.side} {row.quantity} {row.ticker} @ {row.price_per_share}")
+
+
+@pf.command("list")
+def pf_list(
+    include_closed: bool = typer.Option(False, "--include-closed"),
+    no_quotes: bool = typer.Option(False, "--no-quotes", help="Skip the live price fetch."),
+) -> None:
+    """Show positions with live P&L."""
+    from app.db import session_scope
+    from app.portfolio import service
+
+    with session_scope() as session:
+        view = service.build_portfolio_view(session, with_quotes=not no_quotes)
+
+    rows = list(view.open_positions) + (list(view.closed_positions) if include_closed else [])
+    if not rows:
+        typer.echo("(no positions)")
+        return
+
+    typer.echo(f"{'TICKER':<8}{'QTY':>10}{'AVG':>12}{'LAST':>12}{'VALUE':>14}{'P&L':>14}")
+    for p in rows:
+        typer.echo(
+            f"{p.ticker:<8}{p.quantity:>10.4g}"
+            f"{(p.avg_cost or 0):>12.2f}"
+            f"{(p.last_price if p.last_price is not None else float('nan')):>12.2f}"
+            f"{(p.market_value if p.market_value is not None else float('nan')):>14.2f}"
+            f"{(p.unrealized_pnl if p.unrealized_pnl is not None else float('nan')):>14.2f}"
+        )
+    typer.echo(f"\nrealized P&L: {view.total_realized_pnl:.2f}")
+    if view.quote_errors:
+        typer.echo(f"no quote for: {', '.join(view.quote_errors)}")
+
+
+@pf.command("trades")
+def pf_trades(ticker: str | None = typer.Option(None, "--ticker")) -> None:
+    """Show the raw trade ledger."""
+    from app.db import session_scope
+    from app.portfolio import service
+
+    with session_scope() as session:
+        records = service.list_trades(session, ticker)
+
+    if not records:
+        typer.echo("(no trades)")
+        return
+    for r in records:
+        eur = f" eur={r.eur_amount:.2f}" if r.eur_amount is not None else ""
+        typer.echo(
+            f"#{r.id:<5}{r.traded_at.date()}  {r.side:<4} {r.quantity:>10.4g} "
+            f"{r.ticker:<8}@ {r.price_per_share:>10.2f} {r.currency}{eur}"
+        )
+
+
+@pf.command("rm")
+def pf_rm(trade_id: int = typer.Argument(..., help="Trade id from `tsr pf trades`.")) -> None:
+    """Delete a mistaken trade."""
+    from app.db import session_scope
+    from app.portfolio import service
+
+    with session_scope() as session:
+        try:
+            service.delete_trade(session, trade_id)
+        except KeyError as exc:
+            typer.echo(f"no trade #{trade_id}")
+            raise typer.Exit(code=1) from exc
+    typer.echo(f"deleted #{trade_id}")
+
+
 if __name__ == "__main__":
     app()
