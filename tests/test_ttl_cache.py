@@ -92,15 +92,19 @@ def test_cache_clear_drops_everything():
     assert f.peek_fetched_at(1) is not None
 
 
-def test_maxsize_evicts_oldest():
+def test_maxsize_evicts_least_recently_used():
+    """A cache hit refreshes position, so the re-read key survives."""
     @ttl_cache(seconds=100, maxsize=2)
     def f(x):
         return x
 
     f(1)
     f(2)
-    f(3)
-    assert f.peek_fetched_at(1) is None
+    f(1)          # re-read key 1 — under FIFO this would not save it
+    f(3)          # evicts the least-recently-used, which is now key 2
+
+    assert f.peek_fetched_at(2) is None
+    assert f.peek_fetched_at(1) is not None
     assert f.peek_fetched_at(3) is not None
 
 

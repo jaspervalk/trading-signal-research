@@ -7,6 +7,13 @@ forever. This decorator adds expiry plus one thing `lru_cache` cannot give
 us — `peek_fetched_at`, so a caller can stamp its output with the age of
 the data it was built from.
 
+Eviction is least-recently-used, not insertion-order: a cache hit via
+`move_to_end()` refreshes an entry's position, so a frequently-read ticker
+survives eviction when capacity is reached.
+
+Arguments must be hashable (same failure mode as functools.lru_cache), since
+they are used as dictionary keys.
+
 Not thread-safe by design: the worst case under a race is a duplicate
 upstream fetch, which is what the un-cached path did anyway.
 """
@@ -34,7 +41,7 @@ def _make_key(args: tuple, kwargs: dict) -> tuple:
 
 
 def ttl_cache(seconds: float, maxsize: int = 256) -> Callable:
-    """Memoise a function for `seconds`, evicting oldest beyond `maxsize`.
+    """Memoise a function for `seconds`, evicting least-recently-used beyond `maxsize`.
 
     Exceptions are never cached. The wrapper exposes `cache_clear()` and
     `peek_fetched_at(*args, **kwargs)`, which returns the UTC time the
