@@ -186,6 +186,20 @@ def _to_view(position: Position, quote: pricing.Quote | None, rate: float | None
     return view
 
 
+def _size_key(view: PositionView) -> float:
+    """Sort holdings largest-first.
+
+    Falls back to cost basis when a position could not be priced, so an
+    unquotable holding still sorts by how much is in it rather than sinking
+    to the bottom. Across mixed currencies this compares raw numbers, which
+    is imprecise — but it is display order, not arithmetic, and the totals
+    already refuse to mix currencies.
+    """
+    if view.market_value is not None:
+        return view.market_value
+    return view.cost_basis
+
+
 def build_portfolio_view(session: Session, *, with_quotes: bool = True) -> PortfolioView:
     positions = fold_trades(_all_records(session))
 
@@ -242,8 +256,10 @@ def build_portfolio_view(session: Session, *, with_quotes: bool = True) -> Portf
     )
 
     return PortfolioView(
-        open_positions=sorted(open_views, key=lambda v: v.ticker),
-        closed_positions=sorted(closed_views, key=lambda v: v.ticker),
+        open_positions=sorted(open_views, key=_size_key, reverse=True),
+        closed_positions=sorted(
+            closed_views, key=lambda v: v.realized_pnl, reverse=True
+        ),
         total_market_value=total_value,
         total_market_value_eur=total_market_value_eur,
         total_unrealized_pnl=total_unrealized,

@@ -252,3 +252,35 @@ def test_single_currency_fully_priced_portfolio_has_totals(session):
         (10 * 150.0 - 10 * 100.0) + (5 * 150.0 - 5 * 50.0)
     )
     assert view.total_realized_pnl == pytest.approx(0.0)
+
+
+def test_open_positions_are_ordered_largest_first(session):
+    """Holdings sort by market value descending, not alphabetically."""
+    service.create_trade(session, _in(ticker="AAA", qty=1, price=10.0))    # 10 cost
+    service.create_trade(session, _in(ticker="ZZZ", qty=100, price=10.0))  # 1000 cost
+    service.create_trade(session, _in(ticker="MMM", qty=10, price=10.0))   # 100 cost
+
+    view = service.build_portfolio_view(session)
+    # The autouse quote fixture prices everything at 150, so market value
+    # tracks quantity: ZZZ 15000 > MMM 1500 > AAA 150.
+    assert [p.ticker for p in view.open_positions] == ["ZZZ", "MMM", "AAA"]
+
+
+def test_unpriced_positions_sort_by_cost_basis_not_last(session, monkeypatch):
+    """With no quotes at all, size ordering still holds via cost basis."""
+    service.create_trade(session, _in(ticker="AAA", qty=1, price=10.0))
+    service.create_trade(session, _in(ticker="ZZZ", qty=100, price=10.0))
+
+    view = service.build_portfolio_view(session, with_quotes=False)
+    assert [p.ticker for p in view.open_positions] == ["ZZZ", "AAA"]
+
+
+def test_closed_positions_are_ordered_by_realized_pnl(session):
+    """Closed holdings have no market value, so the size analog is realized P&L."""
+    service.create_trade(session, _in(ticker="WIN", qty=10, price=10.0, day=0))
+    service.create_trade(session, _in(ticker="WIN", side="sell", qty=10, price=20.0, day=1))
+    service.create_trade(session, _in(ticker="LOSS", qty=10, price=10.0, day=0))
+    service.create_trade(session, _in(ticker="LOSS", side="sell", qty=10, price=5.0, day=1))
+
+    view = service.build_portfolio_view(session)
+    assert [p.ticker for p in view.closed_positions] == ["WIN", "LOSS"]
