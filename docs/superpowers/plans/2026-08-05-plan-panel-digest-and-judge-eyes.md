@@ -429,10 +429,16 @@ Change `_resolve_next_earnings`'s decorator from `@lru_cache(maxsize=256)` to:
 ```
 Leave its body unchanged.
 
-In `_build_valuation`, add the stamp as the final keyword argument of the `ValuationPanel(...)` construction (after `industry=...`):
+Add a keyword-only `fetched_at: datetime | None = None` parameter to `_build_valuation`, and pass it straight through as the final keyword argument of the `ValuationPanel(...)` construction (after `industry=...`):
 ```python
-        fetched_at=_resolve_metadata.peek_fetched_at(ticker),
+        fetched_at=fetched_at,
 ```
+
+At the one production call site in `build_ticker_research_view`, capture the stamp on the line immediately after resolving the metadata, so the two cannot drift apart:
+```python
+    metadata_fetched_at = _resolve_metadata.peek_fetched_at(ticker) if fetch_metadata else None
+```
+and pass it into `_build_valuation(...)`. **Do not** call `peek_fetched_at` inside `_build_valuation` — the stamp must describe the `metadata` dict that was actually passed in, not whatever happens to be in the ticker-keyed cache. Task 3 hands this stamp to the judge as a freshness signal, so a mismatch becomes a confidently-wrong claim about data age.
 
 Leave `_load_universe`'s `@lru_cache(maxsize=1)` alone — a config file read once per process is correct. If `lru_cache` becomes an unused import after this change, remove it; if `_load_universe` still uses it, keep it.
 
@@ -1177,13 +1183,35 @@ Add near the other imports:
 from app.analysis.digest import PanelDigest
 ```
 
-Add a helper next to `_format_candidate_levels`:
+Add a helper next to `_format_candidate_levels`. It must render the **unavailable** valuation fields as well as the present ones: `PanelDigest.valuation_block()` renders only present measures, and the design goal is that absence is visible rather than inferred — otherwise the judge cannot distinguish "P/E is missing" from "P/E is fine".
+
 ```python
 def _valuation_block_for(digest: PanelDigest | None) -> str:
-    """Render the digest's valuation measures, or say plainly that there are none."""
+    """Render the digest's valuation measures, naming what was unavailable.
+
+    A reader that sees only present fields cannot tell a missing multiple
+    from a healthy one, so absent fields are listed explicitly.
+    """
     if digest is None:
         return "(valuation context not available for this run)"
-    return digest.valuation_block()
+
+    block = digest.valuation_block()
+    absent = [
+        f.split(".", 1)[1] for f in digest.missing if f.startswith("valuation.")
+    ]
+    if absent:
+        block = f"{block}\n(unavailable, do not infer a value: {', '.join(absent)})"
+    return block
+```
+
+Add a test for this alongside the others in Step 1:
+```python
+def test_valuation_block_names_unavailable_fields():
+    """Absence must be visible to the judge, not inferred from silence."""
+    digest = build_panel_digest(_view())
+    block = judge_mod._valuation_block_for(digest)
+    assert "unavailable" in block.lower()
+    assert "trailing_pe" in block  # present in `missing`, absent from measures
 ```
 
 Add a rule to `SYSTEM_PROMPT`, after the existing confidence rule (keep the numbering contiguous with whatever is already there):
