@@ -334,37 +334,17 @@ class TickerResearchView(BaseModel):
 
     ticker: str
     as_of: datetime
-    identity: IdentityCoverage = Field(
-        default_factory=lambda: IdentityCoverage(
-            ticker="",
-            in_universe=False,
-            has_transcript_signals=False,
-            has_extracted_calls=False,
-            has_extracted_claims=False,
-            n_bars_loaded=0,
-            enough_history_for_full_analysis=False,
-        )
-    )
+    identity: IdentityCoverage
     market: MarketSnapshotPanel
     valuation: ValuationPanel = Field(default_factory=lambda: ValuationPanel())
-    indicators: IndicatorPanel = Field(default_factory=lambda: IndicatorPanel())
-    levels: LevelsPanel = Field(default_factory=lambda: LevelsPanel())
-    setup: SetupClassification = Field(
-        default_factory=lambda: SetupClassification(setup_type="insufficient_data", confidence="low")
-    )
-    style_fit: StyleFitPanel = Field(default_factory=lambda: StyleFitPanel())
-    status: DecisionSupportStatus = Field(
-        default_factory=lambda: DecisionSupportStatus(
-            status="insufficient_data", confidence="low", summary=""
-        )
-    )
-    action: ActionSignal = Field(
-        default_factory=lambda: ActionSignal(label="N/A", confidence="low", derivation="")
-    )
-    entry_zone: EntryZoneCandidate = Field(default_factory=lambda: EntryZoneCandidate(available=False))
-    transcript: TranscriptContext = Field(
-        default_factory=lambda: TranscriptContext(has_data=False, n_signals=0, n_calls=0, n_claims=0)
-    )
+    indicators: IndicatorPanel
+    levels: LevelsPanel
+    setup: SetupClassification
+    style_fit: StyleFitPanel
+    status: DecisionSupportStatus
+    action: ActionSignal
+    entry_zone: EntryZoneCandidate
+    transcript: TranscriptContext
     methodology_links: list[str] = Field(
         default_factory=lambda: [
             "ADR-0005 · Product pivot to decision-support",

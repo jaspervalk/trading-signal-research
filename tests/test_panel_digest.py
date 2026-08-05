@@ -6,20 +6,48 @@ from datetime import UTC, datetime
 
 from app.analysis.digest import Measure, PanelDigest, build_panel_digest
 from app.analysis.schema import (
+    ActionSignal,
+    DecisionSupportStatus,
+    EntryZoneCandidate,
+    IdentityCoverage,
     IndicatorPanel,
     LevelsPanel,
     MarketSnapshotPanel,
+    SetupClassification,
+    StyleFitPanel,
     TickerResearchView,
+    TranscriptContext,
     ValuationPanel,
 )
 
 AS_OF = datetime(2026, 8, 5, tzinfo=UTC)
 
 
-def _view(**overrides):
+def _complete_view(**overrides):
+    """Build a fully-populated TickerResearchView.
+
+    `TickerResearchView` is the FastAPI response_model for
+    `GET /tickers/{ticker}/research`; `identity`/`setup`/`style_fit`/
+    `status`/`action`/`entry_zone`/`transcript`/`indicators`/`levels` are
+    all required with no defaults on purpose — they are always computed by
+    the pipeline, so a caller that fails to populate one should raise
+    rather than silently serialize a placeholder. This fixture supplies
+    minimal-but-valid instances for all of them so digest tests can focus
+    on `market`/`valuation`/`indicators`/`levels`, the only panels the
+    digest actually reads.
+    """
     kwargs = dict(
         ticker="NVDA",
         as_of=AS_OF,
+        identity=IdentityCoverage(
+            ticker="NVDA",
+            in_universe=True,
+            has_transcript_signals=False,
+            has_extracted_calls=False,
+            has_extracted_claims=False,
+            n_bars_loaded=300,
+            enough_history_for_full_analysis=True,
+        ),
         market=MarketSnapshotPanel(as_of=AS_OF, last_close=100.0, return_21d=0.12),
         valuation=ValuationPanel(
             forward_pe=30.0,
@@ -31,9 +59,33 @@ def _view(**overrides):
         ),
         indicators=IndicatorPanel(rsi_14=71.0, atr_14=3.5),
         levels=LevelsPanel(nearest_support=95.0),
+        setup=SetupClassification(setup_type="breakout_candidate", confidence="medium"),
+        style_fit=StyleFitPanel(),
+        status=DecisionSupportStatus(status="watch", confidence="medium", summary="test fixture"),
+        action=ActionSignal(label="HOLD", confidence="medium", derivation="test fixture"),
+        entry_zone=EntryZoneCandidate(available=False),
+        transcript=TranscriptContext(has_data=False, n_signals=0, n_calls=0, n_claims=0),
     )
     kwargs.update(overrides)
     return TickerResearchView(**kwargs)
+
+
+def _view(**overrides):
+    return _complete_view(**overrides)
+
+
+def _empty_view(ticker: str) -> TickerResearchView:
+    """A complete view whose data-bearing panels (market/valuation/indicators/
+    levels) are all bare, so the digest has nothing to report on those axes,
+    while the structural panels (identity/setup/.../transcript) are still
+    fully populated, exactly as the real pipeline always produces them."""
+    return _complete_view(
+        ticker=ticker,
+        market=MarketSnapshotPanel(as_of=AS_OF),
+        valuation=ValuationPanel(),
+        indicators=IndicatorPanel(),
+        levels=LevelsPanel(),
+    )
 
 
 def test_digest_is_flat_and_citable():
@@ -91,7 +143,7 @@ def test_valuation_without_fetched_at_falls_back_to_view_as_of():
 
 
 def test_digest_handles_a_fully_empty_view():
-    view = TickerResearchView(ticker="EMPTY", as_of=AS_OF, market=MarketSnapshotPanel(as_of=AS_OF))
+    view = _empty_view("EMPTY")
     d = build_panel_digest(view)
     assert d.measures == [] or all(m.value is not None for m in d.measures)
     assert "valuation.forward_pe" in d.missing
@@ -111,7 +163,7 @@ def test_valuation_block_states_units_and_age():
 
 
 def test_valuation_block_is_explicit_when_nothing_is_available():
-    view = TickerResearchView(ticker="EMPTY", as_of=AS_OF, market=MarketSnapshotPanel(as_of=AS_OF))
+    view = _empty_view("EMPTY")
     block = build_panel_digest(view).valuation_block()
     assert "no valuation data" in block.lower()
 
