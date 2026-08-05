@@ -1,9 +1,17 @@
 """Leakage-controlled market data reader for the walk-forward harness.
 
 A `MarketDataReader` is bound to a single `as_of` UTC timestamp. Every read
-slices the underlying bar cache to `bar_time <= as_of` before returning. A
-strategy that bypasses the reader to reach `get_daily_bars` directly is a
-code-review hard-fail (ADR 0007 §"Bias prevention").
+slices the underlying bar cache to what was *knowable* at `as_of` before
+returning. A strategy that bypasses the reader to reach `get_daily_bars`
+directly is a code-review hard-fail (ADR 0007 §"Bias prevention").
+
+The knowability boundary is the last NYSE session close at or before `as_of`
+— NOT `as_of` itself. Daily bars are stamped at their session date's
+midnight, so a `bar_index <= as_of` filter admits the current session's bar
+(and therefore its close, high and low) for any intraday `as_of`. Because
+walk-forward rebalances snap to session *opens*, that naive filter leaked
+the whole of the decision day into every decision. `_knowable_through`
+anchors both reads on the last completed session instead.
 
 V1 model:
 - Reads from the existing `app.market.yfinance_client` parquet cache.
@@ -15,11 +23,12 @@ V1 model:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
+from app.market.calendar import last_completed_session_close
 from app.market.yfinance_client import get_daily_bars
 
 
@@ -47,12 +56,37 @@ class MarketDataReader:
     history_days: int = 540
     benchmark_ticker: str = "SPY"
     _cache: dict[str, pd.DataFrame] = None  # type: ignore[assignment]
+    _knowable_through: pd.Timestamp = field(init=False, repr=False, default=None)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.as_of.tzinfo is None:
             self.as_of = self.as_of.replace(tzinfo=UTC)
         # Per-instance cache so we don't re-slice the same DataFrame repeatedly.
         self._cache = {}
+        self._knowable_through = self._compute_knowable_through()
+
+    def _compute_knowable_through(self) -> pd.Timestamp:
+        """Session date (UTC-midnight-normalised) of the last close at/before
+        `as_of`. Bars stamped after this were not knowable at `as_of`.
+
+        Falls back to `as_of` itself if the calendar can't answer — that is
+        the old, leakier behaviour, but it only triggers when the calendar is
+        unavailable, and failing open here beats returning no bars at all.
+        """
+        try:
+            close = last_completed_session_close(self.as_of)
+        except Exception:
+            close = None
+        if close is None:
+            return _to_utc_ts(self.as_of).normalize()
+        return _to_utc_ts(close).normalize()
+
+    @property
+    def knowable_through(self) -> pd.Timestamp:
+        """The last session date whose bar is visible at `as_of`. Exposed so
+        callers can anchor horizon math on the same boundary the reads use.
+        """
+        return self._knowable_through
 
     @classmethod
     def at(
@@ -70,7 +104,11 @@ class MarketDataReader:
     # Reads
 
     def daily_bars(self, ticker: str, *, lookback_days: int | None = None) -> pd.DataFrame:
-        """Daily OHLCV for `ticker` over `[as_of − lookback_days, as_of]`.
+        """Daily OHLCV for `ticker` over `[as_of − lookback_days, knowable_through]`.
+
+        The upper bound is the last *completed* session, not `as_of`. At an
+        intraday `as_of` the current session's bar exists in the cache but its
+        close has not happened yet; including it is look-ahead (ADR 0003).
 
         Returns an empty frame if the ticker isn't tradeable in the window
         (yfinance returned nothing — usually means the symbol was delisted or
@@ -85,10 +123,10 @@ class MarketDataReader:
             df = get_daily_bars(ticker, start=start, end=self.as_of)
         except Exception:
             df = pd.DataFrame()
-        # Slice the cache itself to as_of immediately. If the underlying
-        # cache contains bars later than as_of (forward-extending), they are
-        # dropped here so they cannot leak via memoization.
-        df = df[df.index <= _to_utc_ts(self.as_of)] if not df.empty else df
+        # Slice the cache itself immediately. If the underlying cache contains
+        # bars beyond the knowability boundary (it is forward-extending), they
+        # are dropped here so they cannot leak via memoization.
+        df = df[df.index.normalize() <= self._knowable_through] if not df.empty else df
         self._cache[ticker] = df
         return self._slice(df, ld)
 
@@ -96,7 +134,15 @@ class MarketDataReader:
         return self.daily_bars(self.benchmark_ticker, lookback_days=lookback_days)
 
     def forward_bars(self, ticker: str, *, forward_days: int = 60) -> pd.DataFrame:
-        """Bars with `bar_time > as_of`, used by the *simulator* to compute fills.
+        """Bars after the knowability boundary, used by the *simulator* to
+        compute fills.
+
+        Mirrors `daily_bars`: everything `daily_bars` can see ends at
+        `knowable_through`, so the forward window starts at the very next
+        session. The two are exact complements — no bar is visible to both,
+        and no bar falls in the gap between them. At an intraday `as_of` the
+        first forward bar is the *current* session, which is the correct
+        thing to fill against: decide on yesterday's close, fill today.
 
         Hard rule: this is HARNESS-INTERNAL. A strategy that calls this is
         looking at the future and is leaking. The simulator (in
@@ -106,14 +152,14 @@ class MarketDataReader:
         try:
             df = get_daily_bars(
                 ticker,
-                start=self.as_of,
+                start=self._knowable_through.to_pydatetime(),
                 end=self.as_of + timedelta(days=forward_days),
             )
         except Exception:
             return pd.DataFrame()
         if df.empty:
             return df
-        return df[df.index > _to_utc_ts(self.as_of)]
+        return df[df.index.normalize() > self._knowable_through]
 
     def forward_benchmark_bars(self, *, forward_days: int = 60) -> pd.DataFrame:
         return self.forward_bars(self.benchmark_ticker, forward_days=forward_days)

@@ -143,13 +143,32 @@ def lens_scorecards_cmd(
         return
 
     for c in cards:
-        typer.echo(f"{c.lens_name} ({c.horizon}, n={c.n})")
+        typer.echo(
+            f"{c.lens_name} ({c.horizon}, n={c.n} snapshots "
+            f"over {c.n_ticker_days} ticker-days)"
+        )
         typer.echo(
             f"  hit_rate: {c.hit_rate:.2%}  [{c.hit_rate_lo:.2%}, {c.hit_rate_hi:.2%}]"
         )
-        typer.echo(f"  avg_excess_vs_spy: {c.avg_excess_vs_spy:+.2%}")
+        if c.avg_directional_excess is not None:
+            typer.echo(
+                f"  avg_directional_excess: {c.avg_directional_excess:+.2%}  "
+                f"(n={c.n_directional} directional calls)"
+            )
+        else:
+            typer.echo("  avg_directional_excess: n/a (no directional calls)")
+        typer.echo(
+            f"  sample avg_excess_vs_spy: {c.avg_excess_vs_spy:+.2%}  "
+            "(the tickers, not the lens)"
+        )
         if c.by_regime:
             typer.echo(f"  by_regime: {c.by_regime}")
+    if cards and min(c.n_ticker_days for c in cards) < 30:
+        typer.echo(
+            "\nNOTE: snapshots cluster on few ticker-days, so the Wilson CIs "
+            "above are narrower than the evidence warrants. Treat "
+            "n_ticker_days as the real denominator."
+        )
 
 
 @app.command(name="aggregate-signals")

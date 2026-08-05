@@ -101,6 +101,29 @@ def n_trading_days_after_close(activation_at_utc: datetime, n: int) -> datetime:
     return after["market_close"].iloc[n - 1].to_pydatetime()
 
 
+def last_completed_session_close(dt_utc: datetime) -> datetime | None:
+    """`market_close` of the most recent session that had already CLOSED at
+    `dt_utc`, or None if none is found within the lookback window.
+
+    This is the *knowability* boundary for daily bars. A daily bar carries a
+    session's open/high/low/close, but yfinance stamps it at the session
+    date's midnight. So a naive `bar_index <= as_of` filter admits the bar
+    for a session that is still open (or has not opened yet) whenever `as_of`
+    is an intraday timestamp — handing the caller a close from the future.
+
+    Anchoring on this function instead means: at `as_of`, we know everything
+    through this session's close, and nothing after it.
+    """
+    dt_utc = to_utc(dt_utc)
+    sched = _schedule(dt_utc - timedelta(days=30), dt_utc)
+    if sched.empty:
+        return None
+    closed = sched[sched["market_close"] <= dt_utc]
+    if closed.empty:
+        return None
+    return closed["market_close"].iloc[-1].to_pydatetime()
+
+
 def horizon_to_trading_days(horizon: str) -> int:
     """Map '1d'|'3d'|'5d'|'21d' → integer trading days."""
     if not horizon.endswith("d"):

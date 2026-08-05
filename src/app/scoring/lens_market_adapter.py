@@ -36,6 +36,7 @@ import pandas as pd
 from app.backtest.market_reader import MarketDataReader
 from app.market.calendar import (
     horizon_to_trading_days,
+    last_completed_session_close,
     n_trading_days_after_close,
 )
 from app.scoring.lens_outcomes import HORIZON_DAYS
@@ -91,8 +92,18 @@ class CachedMarketAdapter:
 
         n_days = horizon_to_trading_days(horizon)
 
+        # Anchor on the last completed session, not on `as_of`. A lens that
+        # ran at 08:00 UTC (pre-open) knew yesterday's close and nothing more,
+        # so its "1 day later" is today's close — measured from yesterday's.
+        # Anchoring on `as_of` instead both leaked the current session's close
+        # into the entry price and silently dropped the 1d horizon entirely
+        # for every pre-open snapshot.
+        anchor_close = last_completed_session_close(as_of)
+        if anchor_close is None:
+            return None
+
         try:
-            horizon_end = n_trading_days_after_close(as_of, n_days)
+            horizon_end = n_trading_days_after_close(anchor_close, n_days)
         except ValueError:
             return None
 
