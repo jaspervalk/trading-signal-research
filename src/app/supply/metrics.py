@@ -7,17 +7,21 @@ module implements them exactly and does not "improve" them. Thresholds live
 in `configs/supply_screen.yaml`, loaded via `load_thresholds()`, never
 hardcoded here.
 
-Two correctness rules worth restating because they are easy to get quietly
+Three correctness rules worth restating because they are easy to get quietly
 wrong:
 
 **Thin history is refused, not guessed.** A percentile computed over fewer
-than `MIN_QUARTERS` (24, six years) quarters is meaningless — see
+than `Thresholds.min_quarters_history` (24, six years, in
+`configs/supply_screen.yaml`) quarters is meaningless — see
 `app.supply.fundamentals` for why (SanDisk's 2025 spin-out has 12 quarters
 of EDGAR history and would otherwise be percentiled against its own
 two-year window). Below the floor, `compute_metrics` sets every
 history-dependent field to `None` and flags `sufficient_history=False`;
 `passes()` surfaces that as an explicit, singular reason rather than
-silently comparing `None` against a threshold.
+silently comparing `None` against a threshold. The YAML value is
+authoritative — `compute_metrics` reads the floor from the `Thresholds`
+object passed to it. `MIN_QUARTERS` is only a documented fallback for
+callers that don't have a `Thresholds` yet.
 
 **Survivability is infinite for a cash-generative company, not zero.** Burn
 is the mean of NEGATIVE quarterly operating cash flows. If a company has no
@@ -26,6 +30,16 @@ cash" is undefined in the sense that matters here — represented as `None`.
 `None` survives Pydantic/JSON serialisation cleanly (as `null`), unlike
 `float("inf")`, which is not valid JSON. `passes()` treats `None` as always
 clearing the survivability threshold.
+
+**Missing analyst coverage does not fail the screen.** The `analyst_count`
+criterion exists to surface UNDER-covered names; a ticker yfinance reports
+no `numberOfAnalystOpinions` for is either genuinely uncovered (the most
+interesting case for this screen) or has missing data, and Layer A is a
+coarse net that Layer B refines. Excluding it would drop exactly the names
+this screen hunts for. A missing count is recorded on `SupplyMetrics.caveats`
+so a reader can see the criterion was unverifiable, but it never fails
+`passes()`. A *present* count above `analyst_count_max` still fails, as
+before.
 """
 
 from __future__ import annotations
@@ -35,14 +49,18 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.supply.fundamentals import MarginHistory
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Six years of quarterly filings. Below this, a percentile or a stdev over
-# the history is statistically meaningless — refuse rather than guess.
+# Six years of quarterly filings — the documented DEFAULT floor below which a
+# percentile or a stdev over the history is statistically meaningless. This
+# is only used when `compute_metrics` is called without a `Thresholds`
+# object; whenever one is supplied, `thresholds.min_quarters_history` is the
+# authoritative gate (so editing configs/supply_screen.yaml actually changes
+# behaviour, not just a message string).
 MIN_QUARTERS = 24
 
 
@@ -70,6 +88,11 @@ class SupplyMetrics(BaseModel):
     survivability_quarters: Optional[float] = None
 
     analyst_count: Optional[int] = None  # yfinance numberOfAnalystOpinions
+
+    # Non-fatal notes: a criterion that couldn't be evaluated (e.g. missing
+    # analyst coverage) rather than one that failed. `passes()` never fails
+    # on account of a caveat alone.
+    caveats: list[str] = Field(default_factory=list)
 
 
 class Thresholds(BaseModel):
@@ -107,7 +130,7 @@ def compute_metrics(
     ttm_operating_cash_flow: float,
     quarterly_operating_cash_flows: list[float],
     analyst_count: int | None = None,
-    min_quarters: int = MIN_QUARTERS,
+    thresholds: Thresholds | None = None,
 ) -> SupplyMetrics:
     """Compute the eight Layer A metrics.
 
@@ -116,8 +139,14 @@ def compute_metrics(
     figures being scored against that distribution — deliberately separate
     from `margin_history.gross_margins`, which is the per-quarter series,
     not a trailing-twelve-month figure.
+
+    `thresholds`, if given, supplies the history-sufficiency floor
+    (`thresholds.min_quarters_history`) — pass the same `Thresholds` you'll
+    later hand to `passes()` so the two agree. Falls back to the module
+    default `MIN_QUARTERS` when omitted.
     """
     quarters = margin_history.quarters
+    min_quarters = thresholds.min_quarters_history if thresholds is not None else MIN_QUARTERS
     sufficient = quarters >= min_quarters
 
     gm_percentile: float | None = None
@@ -143,6 +172,13 @@ def compute_metrics(
         burn = abs(statistics.mean(negative_quarters))
         survivability_quarters = (cash + max(ttm_operating_cash_flow, 0)) / burn
 
+    caveats: list[str] = []
+    if analyst_count is None:
+        caveats.append(
+            "analyst_count unavailable — criterion unverifiable, not evaluated "
+            "(uncovered or missing data)"
+        )
+
     return SupplyMetrics(
         quarters_of_history=quarters,
         sufficient_history=sufficient,
@@ -153,6 +189,7 @@ def compute_metrics(
         capital_intensity=capital_intensity,
         survivability_quarters=survivability_quarters,
         analyst_count=analyst_count,
+        caveats=caveats,
     )
 
 
@@ -206,7 +243,10 @@ def passes(metrics: SupplyMetrics, thresholds: Thresholds) -> tuple[bool, list[s
         reasons.append(
             f"survivability_quarters={metrics.survivability_quarters} < {thresholds.survivability_quarters_min}"
         )
-    if metrics.analyst_count is None or metrics.analyst_count > thresholds.analyst_count_max:
+    # Missing analyst_count is a caveat (see SupplyMetrics.caveats), not a
+    # failure — an uncovered name is exactly what this screen is hunting
+    # for. A *present* count above the max still fails.
+    if metrics.analyst_count is not None and metrics.analyst_count > thresholds.analyst_count_max:
         reasons.append(
             f"analyst_count={metrics.analyst_count} > {thresholds.analyst_count_max}"
         )

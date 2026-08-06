@@ -46,6 +46,7 @@ def _compute(
     ttm_operating_cash_flow: float = 50.0,
     quarterly_operating_cash_flows: list[float] | None = None,
     analyst_count: int | None = 5,
+    thresholds: Thresholds | None = None,
 ) -> SupplyMetrics:
     return compute_metrics(
         _margin_history(margins),
@@ -57,6 +58,7 @@ def _compute(
         ttm_operating_cash_flow=ttm_operating_cash_flow,
         quarterly_operating_cash_flows=quarterly_operating_cash_flows or [10.0, 20.0],
         analyst_count=analyst_count,
+        thresholds=thresholds,
     )
 
 
@@ -127,6 +129,46 @@ def test_a_short_history_is_rejected_rather_than_percentiled():
     assert len(reasons) == 1
 
 
+def test_min_quarters_history_is_read_from_thresholds_not_hardcoded():
+    """The YAML value must be the actual gate, not just message decoration.
+    A 26-quarter history clears the module default (MIN_QUARTERS=24) but
+    must be refused once min_quarters_history is configured to 30."""
+    margins = SUFFICIENT_MARGINS + [0.25, 0.25]  # 26 quarters
+    assert len(margins) == 26
+    assert len(margins) > MIN_QUARTERS
+
+    thresholds = Thresholds(
+        gm_percentile_max=0.40,
+        margin_headroom_min_pp=10.0,
+        earnings_torque_min=0.25,
+        gm_volatility_min_pp=5.0,
+        capital_intensity_min=0.5,
+        survivability_quarters_min=8,
+        analyst_count_max=12,
+        min_quarters_history=30,
+    )
+    metrics = compute_metrics(
+        _margin_history(margins),
+        ttm_gross_margin=0.25,
+        ttm_revenue=1_000.0,
+        market_cap=2_000.0,
+        ppe=500.0,
+        cash=100.0,
+        ttm_operating_cash_flow=50.0,
+        quarterly_operating_cash_flows=[10.0, 20.0],
+        analyst_count=5,
+        thresholds=thresholds,
+    )
+
+    assert metrics.sufficient_history is False
+    assert metrics.quarters_of_history == 26
+    assert metrics.gm_percentile is None
+
+    ok, reasons = passes(metrics, thresholds)
+    assert ok is False
+    assert any("insufficient_history" in r for r in reasons)
+
+
 def test_passes_returns_every_failing_reason_not_just_the_first():
     """A near-miss list is only useful if every failing criterion shows up."""
     thresholds = Thresholds(
@@ -182,24 +224,44 @@ def test_passes_true_when_every_metric_clears_its_threshold():
     assert reasons == []
 
 
-def test_passes_fails_on_missing_analyst_count():
-    """Missing coverage data is treated as a failure, not a free pass —
-    consistent with the rest of the codebase's 'insufficient data' convention."""
+def test_missing_analyst_count_does_not_fail_but_is_caveated():
+    """An uncovered ticker is exactly the kind of name this screen hunts
+    for — Layer A is a coarse net Layer B refines. Missing coverage must
+    not silently sink the row; it must show up as a caveat instead.
+
+    Every other criterion is tuned to exactly clear its threshold so a
+    failure here can only come from the (missing) analyst_count check."""
     thresholds = load_thresholds()
-    metrics = SupplyMetrics(
-        quarters_of_history=30,
-        sufficient_history=True,
-        gm_percentile=0.10,
-        margin_headroom_pp=20.0,
-        earnings_torque=0.30,
-        gm_volatility_pp=8.0,
-        capital_intensity=0.8,
-        survivability_quarters=None,
+    metrics = _compute(
+        SUFFICIENT_MARGINS,
+        ttm_gross_margin=0.15,  # percentile 6/24=0.25 <= max 0.40
+        ttm_revenue=1_000.0,
+        market_cap=1_000.0,  # headroom 25pp * 1000 / 1000 = 0.25 == torque_min
+        ppe=500.0,  # capital_intensity 0.5 == min
         analyst_count=None,
     )
+
+    assert metrics.analyst_count is None
+    assert any("analyst_count" in c for c in metrics.caveats)
+
+    ok, reasons = passes(metrics, thresholds)
+    assert ok is True
+    assert reasons == []
+
+
+def test_analyst_count_present_and_above_threshold_still_fails():
+    thresholds = load_thresholds()
+    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=50)
+
+    assert metrics.caveats == []  # coverage IS known, nothing to caveat
     ok, reasons = passes(metrics, thresholds)
     assert ok is False
     assert any("analyst_count" in r for r in reasons)
+
+
+def test_analyst_count_present_and_within_threshold_has_no_caveat():
+    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=3)
+    assert metrics.caveats == []
 
 
 def test_thresholds_come_from_config_not_from_code():
