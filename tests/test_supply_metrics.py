@@ -190,11 +190,12 @@ def test_passes_returns_every_failing_reason_not_just_the_first():
         gm_volatility_pp=1.0,  # fails: < 5.0
         capital_intensity=0.1,  # fails: < 0.5
         survivability_quarters=2.0,  # fails: < 8
-        analyst_count=50,  # fails: > 12
+        analyst_count=50,  # no longer a gate — does not add a reason
     )
     ok, reasons = passes(metrics, thresholds)
     assert ok is False
-    assert len(reasons) == 7
+    assert len(reasons) == 6
+    assert not any("analyst_count" in r for r in reasons)
 
 
 def test_passes_true_when_every_metric_clears_its_threshold():
@@ -243,25 +244,63 @@ def test_missing_analyst_count_does_not_fail_but_is_caveated():
 
     assert metrics.analyst_count is None
     assert any("analyst_count" in c for c in metrics.caveats)
+    assert metrics.coverage_multiplier == pytest.approx(1.0)  # unknown -> neutral
 
     ok, reasons = passes(metrics, thresholds)
     assert ok is True
     assert reasons == []
 
 
-def test_analyst_count_present_and_above_threshold_still_fails():
+def test_analyst_count_present_and_above_threshold_no_longer_fails():
+    """Coverage became a ranking input (coverage_multiplier), not a gate:
+    a heavily-covered, WLK-shaped ticker that qualifies on every other
+    criterion must now pass — see module docstring."""
     thresholds = load_thresholds()
-    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=50)
+    metrics = _compute(
+        SUFFICIENT_MARGINS,
+        ttm_gross_margin=0.15,  # percentile 6/24=0.25 <= max 0.40
+        ttm_revenue=1_000.0,
+        market_cap=1_000.0,  # headroom 25pp * 1000 / 1000 = 0.25 == torque_min
+        ppe=500.0,  # capital_intensity 0.5 == min
+        analyst_count=50,
+    )
 
     assert metrics.caveats == []  # coverage IS known, nothing to caveat
     ok, reasons = passes(metrics, thresholds)
-    assert ok is False
-    assert any("analyst_count" in r for r in reasons)
+    assert ok is True
+    assert reasons == []
+    assert metrics.coverage_multiplier == pytest.approx(0.5)  # 12/50 floored
 
 
 def test_analyst_count_present_and_within_threshold_has_no_caveat():
     metrics = _compute(SUFFICIENT_MARGINS, analyst_count=3)
     assert metrics.caveats == []
+
+
+def test_coverage_multiplier_is_one_at_the_reference_point():
+    thresholds = load_thresholds()  # analyst_count_max == 12
+    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=12, thresholds=thresholds)
+    assert metrics.coverage_multiplier == pytest.approx(1.0)
+
+
+def test_coverage_multiplier_is_capped_at_two_for_thin_coverage():
+    """3 analysts against a reference of 12: 12/3 = 4.0, capped at 2.0."""
+    thresholds = load_thresholds()
+    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=3, thresholds=thresholds)
+    assert metrics.coverage_multiplier == pytest.approx(2.0)
+
+
+def test_coverage_multiplier_is_floored_at_half_for_heavy_coverage():
+    """40 analysts against a reference of 12: 12/40 = 0.3, floored at 0.5."""
+    thresholds = load_thresholds()
+    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=40, thresholds=thresholds)
+    assert metrics.coverage_multiplier == pytest.approx(0.5)
+
+
+def test_coverage_multiplier_is_neutral_when_analyst_count_is_unknown():
+    """Missing data must never be rewarded as if it were thin coverage."""
+    metrics = _compute(SUFFICIENT_MARGINS, analyst_count=None)
+    assert metrics.coverage_multiplier == pytest.approx(1.0)
 
 
 def test_thresholds_come_from_config_not_from_code():

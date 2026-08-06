@@ -10,5 +10,11 @@ earnings_torque_min: 0.25
 gm_volatility_min_pp: 5.0
 capital_intensity_min: 0.5
 survivability_quarters_min: 8
+# No longer a hard-gate rejection threshold (2026-08-06: coverage excluded
+# fundamentally-qualifying names like WLK for a non-fundamental reason). This
+# is now the coverage REFERENCE POINT for `coverage_multiplier` in
+# app.supply.metrics / app.supply.layer_b: analyst_count == analyst_count_max
+# -> multiplier 1.0 (neutral); fewer analysts -> multiplier > 1.0 (rewarded,
+# capped at 2.0); more -> multiplier < 1.0 (discounted, floored at 0.5).
 analyst_count_max: 12
 min_quarters_history: 24

@@ -38,8 +38,18 @@ interesting case for this screen) or has missing data, and Layer A is a
 coarse net that Layer B refines. Excluding it would drop exactly the names
 this screen hunts for. A missing count is recorded on `SupplyMetrics.caveats`
 so a reader can see the criterion was unverifiable, but it never fails
-`passes()`. A *present* count above `analyst_count_max` still fails, as
-before.
+`passes()`.
+
+**Analyst coverage is a ranking input, not a gate.** It used to fail
+`passes()` outright above `analyst_count_max`, which excluded businesses
+that qualified on every fundamental criterion for a non-fundamental reason
+(Westlake/WLK: 11.5th percentile, 22.6pp headroom, 0.27 torque, 25 quarters
+of runway — rejected purely because 15 analysts cover it). Coverage is a
+DISCOVERY signal — thin coverage means fewer people are looking, which is
+what makes a name interesting, not what makes the business good — so it is
+now folded into `coverage_multiplier` and consumed by Layer B's score
+(`app.supply.layer_b`) instead of gating Layer A. `analyst_count` itself is
+still computed and reported for transparency.
 """
 
 from __future__ import annotations
@@ -62,6 +72,25 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # authoritative gate (so editing configs/supply_screen.yaml actually changes
 # behaviour, not just a message string).
 MIN_QUARTERS = 24
+
+# DEFAULT coverage reference point for `coverage_multiplier`, used only when
+# `compute_metrics` is called without a `Thresholds` object. Whenever one is
+# supplied, `thresholds.analyst_count_max` is authoritative — same fallback
+# pattern as `MIN_QUARTERS` above.
+ANALYST_COUNT_REFERENCE = 12
+
+
+def coverage_multiplier(analyst_count: int | None, reference: float) -> float:
+    """Ranking multiplier that rewards thin analyst coverage.
+
+    `1.0` (neutral — never reward missing data) when `analyst_count` is
+    unknown. Otherwise `min(2.0, reference / max(analyst_count, 1))`, floored
+    at `0.5`: `analyst_count == reference` -> 1.0, half the reference -> 2.0
+    (capped), double the reference -> 0.5 (floored, not lower).
+    """
+    if analyst_count is None:
+        return 1.0
+    return min(2.0, max(0.5, reference / max(analyst_count, 1)))
 
 
 class SupplyMetrics(BaseModel):
@@ -89,6 +118,12 @@ class SupplyMetrics(BaseModel):
 
     analyst_count: Optional[int] = None  # yfinance numberOfAnalystOpinions
 
+    # Ranking input for Layer B, not a gate: min(2.0, 12.0 / max(analyst_count, 1)),
+    # floored at 0.5. 1.0 (neutral) when analyst_count is unknown — missing data
+    # is never rewarded. See module docstring "Analyst coverage is a ranking
+    # input, not a gate."
+    coverage_multiplier: float = 1.0
+
     # Non-fatal notes: a criterion that couldn't be evaluated (e.g. missing
     # analyst coverage) rather than one that failed. `passes()` never fails
     # on account of a caveat alone.
@@ -107,6 +142,10 @@ class Thresholds(BaseModel):
     gm_volatility_min_pp: float
     capital_intensity_min: float
     survivability_quarters_min: float
+    # No longer a rejection threshold (see module docstring). This is now the
+    # coverage REFERENCE POINT for `coverage_multiplier`: analyst_count ==
+    # analyst_count_max yields a multiplier of 1.0 (neutral); fewer analysts
+    # scales the multiplier up (thin coverage rewarded), more scales it down.
     analyst_count_max: int
     min_quarters_history: int
 
@@ -179,6 +218,10 @@ def compute_metrics(
             "(uncovered or missing data)"
         )
 
+    reference = (
+        thresholds.analyst_count_max if thresholds is not None else ANALYST_COUNT_REFERENCE
+    )
+
     return SupplyMetrics(
         quarters_of_history=quarters,
         sufficient_history=sufficient,
@@ -189,6 +232,7 @@ def compute_metrics(
         capital_intensity=capital_intensity,
         survivability_quarters=survivability_quarters,
         analyst_count=analyst_count,
+        coverage_multiplier=coverage_multiplier(analyst_count, reference),
         caveats=caveats,
     )
 
@@ -243,22 +287,21 @@ def passes(metrics: SupplyMetrics, thresholds: Thresholds) -> tuple[bool, list[s
         reasons.append(
             f"survivability_quarters={metrics.survivability_quarters} < {thresholds.survivability_quarters_min}"
         )
-    # Missing analyst_count is a caveat (see SupplyMetrics.caveats), not a
-    # failure — an uncovered name is exactly what this screen is hunting
-    # for. A *present* count above the max still fails.
-    if metrics.analyst_count is not None and metrics.analyst_count > thresholds.analyst_count_max:
-        reasons.append(
-            f"analyst_count={metrics.analyst_count} > {thresholds.analyst_count_max}"
-        )
+    # analyst_count is no longer a gate (see module docstring "Analyst
+    # coverage is a ranking input, not a gate") — it's reported and caveated
+    # on SupplyMetrics but never fails passes(). Layer B's coverage_multiplier
+    # is where it affects ranking.
 
     return (len(reasons) == 0, reasons)
 
 
 __all__ = [
+    "ANALYST_COUNT_REFERENCE",
     "MIN_QUARTERS",
     "SupplyMetrics",
     "Thresholds",
     "compute_metrics",
+    "coverage_multiplier",
     "load_thresholds",
     "passes",
 ]

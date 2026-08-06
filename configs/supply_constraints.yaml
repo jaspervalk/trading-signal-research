@@ -1,0 +1,94 @@
+# Supply-constraint registry (Layer B input) — hand-curated, monthly cadence.
+#
+# This file is the second of the two hand-curated tables the Layer B brief
+# calls for (the first is the `exposures` list nested under each constraint
+# below). It is YAML, not a database table, on purpose: it is edited about
+# once a month, by a person, and the diff of that edit — what changed, why,
+# with what source — is the audit trail. A DB table would hide that diff
+# behind a migration or an UPDATE statement; git log on this file IS the
+# review history.
+#
+# Curation process (monthly, or whenever a constraint's `deficit_source`
+# would otherwise go stale):
+#   1. Re-check each entry's cited source. If the deficit percentage,
+#      horizon, or expansion timeline has moved, edit the entry and bump
+#      `last_reviewed` to today.
+#   2. A constraint whose `last_reviewed` is more than 180 days old is still
+#      loaded (never silently dropped) but is flagged `is_stale=True` by
+#      `app.supply.constraints.load_constraints` — Layer B includes it in
+#      scoring but surfaces the flag so a reader knows the number underneath
+#      it hasn't been re-checked recently.
+#   3. Every entry MUST carry a `deficit_source` string containing a 4-digit
+#      publication year. `load_constraints` REJECTS the whole file at load
+#      time — hard failure, not a warning — if any entry's source has no
+#      year in it. No source, no constraint. This is the single most
+#      important rule in this file: a supply-deficit number nobody can trace
+#      to a dated publication is not data, it's a hunch, and Layer B must
+#      never score against a hunch.
+#   4. `confidence` (high/medium/low) is a judgment call about how solid the
+#      source and the mechanism are — not about how much you want the thesis
+#      to be true. It feeds `confidence_weight` in the Layer B score
+#      (high=1.0, medium=0.6, low=0.3), so overstating it directly inflates
+#      every exposed ticker's score.
+#   5. `revenue_exposure_pct` per ticker is a rough estimate unless the
+#      `exposure_source` says otherwise (e.g. a 10-K segment disclosure).
+#      Say so plainly in `exposure_source` when it's a guess — Layer B has
+#      no way to tell a verified segment number from a napkin estimate
+#      except what this field says.
+#
+# --------------------------------------------------------------------------
+# Seeded with exactly ONE entry: the NAND precedent from the project owner's
+# own Layer B brief (2026-08-06). This is a HISTORICAL PRECEDENT used to
+# validate the supply-constraint -> price mechanism this screen is built
+# around — NOT a live thesis, NOT a current deficit call, and NOT backed by
+# any industry source we have independently checked. The 4-5% deficit and
+# 234% price move are the owner's own claim, stated in his brief, cited here
+# as-is. Do not add another constraint entry without an independently
+# checkable, dated source — see rule 3 above.
+# --------------------------------------------------------------------------
+
+constraints:
+  - id: nand_2024_2025_deficit
+    market: NAND flash memory
+    # Midpoint of the owner's stated 4-5% deficit range. HISTORICAL
+    # PRECEDENT, not a live thesis — see header comment.
+    deficit_pct: 0.045
+    deficit_source: >-
+      Owner's Layer B project brief (screener project, dated 2026-08-06):
+      "a 4-5% NAND deficit driving a 234% price rise." This is the owner's
+      own claim, not an independently verified industry figure — recorded
+      here verbatim as the historical precedent this screen's mechanism is
+      validated against.
+    deficit_horizon: "2024-2025, as stated in the owner's brief"
+    expansion_lead_months: 18
+    demand_driver: >-
+      AI/datacenter storage demand growth outstripping NAND fab capacity
+      additions, per the owner's brief. Not independently verified against
+      an industry source.
+    capacity_history: >-
+      Not independently verified. The owner's brief cites this deficit as
+      the driver of a 234% price rise in NAND-exposed names over the
+      2024-2025 window; no fab-level capacity data has been sourced for
+      this entry yet.
+    confidence: high
+    last_reviewed: "2026-08-06"
+    exposures:
+      - ticker: WDC
+        # Rough, unverified estimate — NAND is a meaningful but partial
+        # slice of Western Digital's mixed HDD/NAND-adjacent business.
+        revenue_exposure_pct: 0.5
+        exposure_source: >-
+          UNVERIFIED rough estimate pending 10-K segment-level work. Not
+          sourced from a filed segment disclosure — treat as a placeholder
+          until someone pulls WDC's actual NAND/flash revenue segment.
+        is_pure_play: false
+      - ticker: MU
+        # Rough, unverified estimate — Micron is NAND+DRAM; NAND alone is a
+        # majority but not the whole business.
+        revenue_exposure_pct: 0.7
+        exposure_source: >-
+          UNVERIFIED rough estimate pending 10-K segment-level work. Not
+          sourced from a filed segment disclosure — treat as a placeholder
+          until someone pulls MU's actual NAND revenue segment split from
+          DRAM.
+        is_pure_play: false
