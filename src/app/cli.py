@@ -856,6 +856,185 @@ def screen_refresh_universe(
     typer.echo(f"Wrote {len(entries)} tickers to {path}")
 
 
+def _fetch_supply_market_info(ticker: str) -> tuple[float | None, int | None]:
+    """(market_cap, analyst_count) for one ticker from yfinance `.info`.
+
+    `.info` is a plain dict with **camelCase** keys (`marketCap`,
+    `numberOfAnalystOpinions`) — unlike `fast_info`, which exposes
+    snake_case *attributes* but camelCase *dict keys* if you index it. That
+    mismatch is the exact bug this function is written to avoid: index
+    `.info` with the camelCase key, never `fast_info` with a guessed
+    snake_case one. Mirrors the field-plucking approach in
+    `app.screener.fetcher._fetch_raw` / `build_metrics`, just narrowed to
+    the two fields `app.supply.metrics` needs.
+
+    Never raises — a single ticker's yfinance failure must not sink the
+    whole screen, same discipline as `app.supply.screen`.
+    """
+    import math
+
+    import yfinance as yf
+
+    def _f(x: object) -> float | None:
+        if x is None:
+            return None
+        try:
+            v = float(x)
+        except (TypeError, ValueError):
+            return None
+        return None if math.isnan(v) or math.isinf(v) else v
+
+    try:
+        raw_info = yf.Ticker(ticker).info
+        info = dict(raw_info) if raw_info else {}
+    except Exception as e:  # noqa: BLE001 - one ticker's fetch failure must not sink the batch
+        log.warning("cli.supply_screen.yfinance_fetch_failed", ticker=ticker, error=str(e))
+        return None, None
+
+    market_cap = _f(info.get("marketCap"))
+    analyst_count_f = _f(info.get("numberOfAnalystOpinions"))
+    analyst_count = int(analyst_count_f) if analyst_count_f is not None else None
+    return market_cap, analyst_count
+
+
+def _fetch_supply_market_data(
+    tickers: list[str],
+) -> tuple[dict[str, float], dict[str, int | None]]:
+    """market_cap / analyst_count lookups for `run_supply_screen`, cached on
+    disk for 24h under `data/cache/supply_yf/` (gitignored, mirrors
+    `app.screener.cache`'s shape) so re-running the screen while iterating
+    doesn't re-hit yfinance for every one of ~130 tickers every time."""
+    from app.config import REPO_ROOT
+    from app.screener import cache as yf_cache
+
+    base_dir = REPO_ROOT / "data" / "cache" / "supply_yf"
+    market_caps: dict[str, float] = {}
+    analyst_counts: dict[str, int | None] = {}
+    for ticker in tickers:
+        payload = yf_cache.get(ticker, base_dir=base_dir)
+        if payload is None:
+            market_cap, analyst_count = _fetch_supply_market_info(ticker)
+            payload = {"market_cap": market_cap, "analyst_count": analyst_count}
+            yf_cache.put(ticker, payload, base_dir=base_dir)
+        if payload.get("market_cap") is not None:
+            market_caps[ticker] = payload["market_cap"]
+        analyst_counts[ticker] = payload.get("analyst_count")
+    return market_caps, analyst_counts
+
+
+def _supply_screen_sort_key(result):  # noqa: ANN001, ANN202 - local helper
+    """Rank by earnings_torque descending — "how much gross profit a return
+    to their own historical peak would add relative to market cap," per the
+    plan's stated goal for this screen. Rows without a computable torque
+    (no metrics, or insufficient history) sort last, ticker A-Z beneath
+    that, so the table still reads as a single deterministic ordering
+    instead of dumping unscored rows in input order at the end."""
+    torque = result.metrics.earnings_torque if result.metrics is not None else None
+    return (torque is None, -(torque or 0.0), result.ticker)
+
+
+@app.command(name="supply-screen")
+def supply_screen(
+    limit: int = typer.Option(50, "--limit", help="Show at most N rows."),
+    universe_path: str | None = typer.Option(
+        None, "--universe", help="Override path to the ticker universe CSV."
+    ),
+    output_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table."),
+) -> None:
+    """Layer A supply-constraint screen: gross-margin-compression candidates.
+
+    Resolves each ticker to a SEC CIK, pulls EDGAR companyfacts (7-day disk
+    cache) and yfinance market cap / analyst coverage (24h disk cache),
+    scores the eight Layer A metrics from `app.supply.metrics`, and prints
+    the ranked result plus a coverage summary (resolved / had enough
+    history / passed) so a reader can tell how much of the universe EDGAR
+    actually covers versus how much failed the filters outright. No
+    constraint knowledge, no LLM, no price data — see
+    docs/superpowers/plans/2026-08-06-plan-supply-constraint-layer-a.md.
+    """
+    from pathlib import Path
+
+    from app.screener.universe import DEFAULT_UNIVERSE_PATH, load_universe
+    from app.supply.screen import run_supply_screen
+
+    universe_path_p = Path(universe_path) if universe_path else DEFAULT_UNIVERSE_PATH
+    universe = load_universe(universe_path_p)
+    if not universe:
+        typer.echo("Universe is empty — nothing to screen.")
+        raise typer.Exit(code=1)
+
+    tickers = [e.ticker for e in universe]
+    market_caps, analyst_counts = _fetch_supply_market_data(tickers)
+
+    results = run_supply_screen(tickers, market_caps=market_caps, analyst_counts=analyst_counts)
+
+    resolved = [r for r in results if r.cik is not None]
+    had_history = [r for r in resolved if r.metrics is not None and r.metrics.sufficient_history]
+    passed = [r for r in results if r.passed]
+
+    ordered = sorted(results, key=_supply_screen_sort_key)
+    shown = ordered[:limit]
+
+    if output_json:
+        import json as json_module
+
+        payload = {
+            "coverage": {
+                "universe": len(results),
+                "resolved": len(resolved),
+                "had_sufficient_history": len(had_history),
+                "passed": len(passed),
+            },
+            "results": [
+                {
+                    "ticker": r.ticker,
+                    "cik": r.cik,
+                    "passed": r.passed,
+                    "reasons": r.reasons,
+                    "metrics": r.metrics.model_dump() if r.metrics is not None else None,
+                }
+                for r in shown
+            ],
+        }
+        typer.echo(json_module.dumps(payload, indent=2, default=str))
+        return
+
+    def pct(v: float | None, d: int = 1) -> str:
+        return "—" if v is None else f"{v * 100:.{d}f}%"
+
+    def num(v: float | None, d: int = 2) -> str:
+        return "—" if v is None else f"{v:.{d}f}"
+
+    typer.echo("")
+    header = (
+        f"  {'ticker':<6}  {'passed':<6}  {'gm_pct':>7}  {'headroom':>9}  "
+        f"{'torque':>7}  {'cap_int':>8}  {'surviv_q':>9}  {'qtrs':>5}"
+    )
+    typer.echo(header)
+    typer.echo(f"  {'-' * (len(header) - 2)}")
+    for r in shown:
+        m = r.metrics
+        line = (
+            f"  {r.ticker:<6}  "
+            f"{('yes' if r.passed else 'no'):<6}  "
+            f"{pct(m.gm_percentile) if m else '—':>7}  "
+            f"{num(m.margin_headroom_pp, 1) if m else '—':>9}  "
+            f"{num(m.earnings_torque, 2) if m else '—':>7}  "
+            f"{num(m.capital_intensity, 2) if m else '—':>8}  "
+            f"{num(m.survivability_quarters, 1) if m else '—':>9}  "
+            f"{(m.quarters_of_history if m else '—'):>5}"
+        )
+        typer.echo(line)
+        if not r.passed and r.reasons:
+            typer.echo(f"        near-miss: {'; '.join(r.reasons)}")
+    typer.echo("")
+    typer.echo(
+        f"  coverage: universe={len(results)}  resolved_to_cik={len(resolved)}  "
+        f"had_sufficient_history={len(had_history)}  passed={len(passed)}"
+    )
+    typer.echo("")
+
+
 pf = typer.Typer(no_args_is_help=True, help="Portfolio: manual trade ledger.")
 app.add_typer(pf, name="pf")
 
