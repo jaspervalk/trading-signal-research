@@ -148,6 +148,10 @@ class Thresholds(BaseModel):
     # scales the multiplier up (thin coverage rewarded), more scales it down.
     analyst_count_max: int
     min_quarters_history: int
+    # Which universe the screen runs over. Deliberately not the S&P list:
+    # a screen built to find thin analyst coverage cannot be satisfied by
+    # the most-covered companies in existence. See the YAML for the note.
+    universe_path: str = "configs/supply_universe.csv"
 
 
 def load_thresholds(path: Path | None = None) -> Thresholds:

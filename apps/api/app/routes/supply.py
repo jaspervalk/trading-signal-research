@@ -32,7 +32,7 @@ from pydantic import BaseModel
 
 from app.cli import _fetch_supply_market_data, _supply_screen_sort_key
 from app.logging import get_logger
-from app.screener.universe import DEFAULT_UNIVERSE_PATH, load_universe
+from app.screener.universe import load_universe
 from app.supply import cache as edgar_cache
 from app.supply.constraints import load_constraints
 from app.supply.edgar import company_facts, ticker_to_cik
@@ -158,11 +158,13 @@ def _run_screen(limit: int) -> SupplyScreenResponse:
     earnings_torque descending. `limit` only truncates the returned rows —
     coverage counts are computed over the full universe first, same
     discipline as the CLI's own coverage line."""
-    universe = load_universe(DEFAULT_UNIVERSE_PATH)
+    from app.config import REPO_ROOT
+    from app.supply.metrics import load_thresholds
+
+    universe_path = REPO_ROOT / load_thresholds().universe_path
+    universe = load_universe(universe_path)
     if not universe:
-        raise HTTPException(
-            500, "screen universe is empty (configs/screen_universe.csv)"
-        )
+        raise HTTPException(500, f"screen universe is empty ({universe_path})")
 
     tickers = [e.ticker for e in universe]
     sector_by_ticker = {e.ticker.upper(): (e.sector or None) for e in universe}

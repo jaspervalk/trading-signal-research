@@ -18,3 +18,12 @@ survivability_quarters_min: 8
 # capped at 2.0); more -> multiplier < 1.0 (discounted, floored at 0.5).
 analyst_count_max: 12
 min_quarters_history: 24
+
+# The universe this screen runs over. Deliberately NOT screen_universe.csv:
+# that list is the S&P 500 + Nasdaq-100, whose constituents are the most
+# analyst-covered companies in existence, and this screen exists to find
+# under-covered ones. supply_universe.csv is built from the constraint seed
+# sectors instead (uranium enrichment, offshore drilling, copper, specialty
+# metals, grid equipment, shipping, industrial gas, specialty chemicals,
+# CDMO, memory/optical, semicap).
+universe_path: configs/supply_universe.csv
