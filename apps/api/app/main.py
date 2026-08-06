@@ -29,6 +29,7 @@ from apps.api.app.routes import (
     leaderboard,
     portfolio,
     review,
+    supply,
     tags,
     tickers,
     watchlist,
@@ -84,3 +85,4 @@ app.include_router(tags.router)
 app.include_router(watchlist.router)
 app.include_router(review.router)
 app.include_router(gold.router)
+app.include_router(supply.router)

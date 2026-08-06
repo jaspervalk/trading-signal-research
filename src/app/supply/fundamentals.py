@@ -17,7 +17,7 @@ WRONG — callers (see Task 3) need the coverage visible, not just the numbers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
@@ -71,6 +71,10 @@ class MarginHistory:
     first_end: date | None
     last_end: date | None
     dropped_implausible: int = 0
+    # Quarter-end date per point, index-aligned with `gross_margins` /
+    # `revenues` — `first_end`/`last_end` alone can't reconstruct the dated
+    # series a margin-history chart needs (Task: GET /supply/margin-history).
+    ends: list[date] = field(default_factory=list)
 
 
 def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
@@ -132,6 +136,7 @@ def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
         first_end=ends[0] if ends else None,
         last_end=ends[-1] if ends else None,
         dropped_implausible=dropped_implausible,
+        ends=ends,
     )
 
 

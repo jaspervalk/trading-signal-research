@@ -80,6 +80,14 @@ class ScreenResult:
     metrics: Optional[SupplyMetrics] = None
     passed: bool = False
     reasons: list[str] = field(default_factory=list)
+    # Quarters dropped by `build_margin_history` for an arithmetically
+    # impossible margin (see `app.supply.fundamentals` module docstring) —
+    # carried here (rather than left buried in `MarginHistory`, which this
+    # dataclass does not otherwise reference) so a caller can see how much
+    # of a ticker's reported history was thrown out before trusting
+    # `metrics.gm_percentile` / `margin_headroom_pp`. 0 for tickers that
+    # never reached fundamentals assembly (no CIK, fetch failure, etc).
+    dropped_implausible: int = 0
 
 
 def _parse_date(value: str) -> date | None:
@@ -184,17 +192,26 @@ def _screen_one(
                 f"too little history to compute TTM figures: "
                 f"{margin_history.quarters} quarters (need >= {TTM_QUARTERS})"
             ],
+            dropped_implausible=margin_history.dropped_implausible,
         )
     ttm_gross_margin, ttm_revenue = ttm
 
     market_cap = _lookup(market_caps, ticker)
     if not market_cap:
-        return ScreenResult(ticker=ticker, cik=cik, reasons=["missing or non-positive market cap"])
+        return ScreenResult(
+            ticker=ticker,
+            cik=cik,
+            reasons=["missing or non-positive market cap"],
+            dropped_implausible=margin_history.dropped_implausible,
+        )
 
     ppe = _latest_instant(facts, PPE)
     if ppe is None:
         return ScreenResult(
-            ticker=ticker, cik=cik, reasons=["no PP&E reported under any known concept"]
+            ticker=ticker,
+            cik=cik,
+            reasons=["no PP&E reported under any known concept"],
+            dropped_implausible=margin_history.dropped_implausible,
         )
 
     cash = _latest_instant(facts, CASH) or 0.0
@@ -218,7 +235,14 @@ def _screen_one(
         thresholds=thresholds,
     )
     ok, reasons = passes(metrics, thresholds)
-    return ScreenResult(ticker=ticker, cik=cik, metrics=metrics, passed=ok, reasons=reasons)
+    return ScreenResult(
+        ticker=ticker,
+        cik=cik,
+        metrics=metrics,
+        passed=ok,
+        reasons=reasons,
+        dropped_implausible=margin_history.dropped_implausible,
+    )
 
 
 def run_supply_screen(

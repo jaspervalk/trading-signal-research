@@ -841,6 +841,85 @@ export type PolicyViewOut = {
   monthly_trade_budget: number;
 };
 
+// ---------------------------------------------------------------------------
+// Supply-constraint screener (apps/api/app/routes/supply.py).
+// Mirrors the Pydantic response models there — keep in sync.
+
+export type SupplyMetricsOut = {
+  quarters_of_history: number;
+  sufficient_history: boolean;
+  gm_percentile: number | null;
+  margin_headroom_pp: number | null;
+  earnings_torque: number | null;
+  gm_volatility_pp: number | null;
+  capital_intensity: number;
+  survivability_quarters: number | null;
+  analyst_count: number | null;
+  coverage_multiplier: number;
+  caveats: string[];
+};
+
+export type SupplyScreenRow = {
+  ticker: string;
+  sector: string | null;
+  cik: number | null;
+  passed: boolean;
+  reasons: string[];
+  dropped_implausible: number;
+  metrics: SupplyMetricsOut | null;
+};
+
+export type SupplyScreenCoverage = {
+  universe: number;
+  resolved: number;
+  sufficient_history: number;
+  passed: number;
+};
+
+export type SupplyScreenResponse = {
+  as_of: string;
+  coverage: SupplyScreenCoverage;
+  rows: SupplyScreenRow[];
+};
+
+export type SupplyConstraintExposure = {
+  ticker: string;
+  revenue_exposure_pct: number;
+  exposure_source: string;
+  is_pure_play: boolean;
+};
+
+export type SupplyConstraint = {
+  id: string;
+  market: string;
+  deficit_pct: number;
+  deficit_source: string;
+  deficit_horizon: string;
+  expansion_lead_months: number;
+  demand_driver: string;
+  capacity_history: string;
+  confidence: "high" | "medium" | "low";
+  last_reviewed: string;
+  is_stale: boolean;
+  exposures: SupplyConstraintExposure[];
+};
+
+export type SupplyMarginHistoryPoint = {
+  quarter_end: string;
+  gross_margin: number;
+};
+
+export type SupplyMarginHistory = {
+  ticker: string;
+  cik: number | null;
+  quarters: number;
+  dropped_implausible: number;
+  points: SupplyMarginHistoryPoint[];
+  current_gross_margin: number | null;
+  historical_peak_gross_margin: number | null;
+  headroom_pp: number | null;
+};
+
 // ---------- Endpoints ----------
 
 export const api = {
@@ -1058,6 +1137,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ manual_status, manual_notes }),
       }),
+  },
+  supply: {
+    screen: (limit = 50) =>
+      request<SupplyScreenResponse>(`/supply/screen?limit=${limit}`),
+    refresh: (limit = 50) =>
+      request<SupplyScreenResponse>(`/supply/screen/refresh?limit=${limit}`, {
+        method: "POST",
+      }),
+    constraints: () => request<SupplyConstraint[]>("/supply/constraints"),
+    marginHistory: (ticker: string) =>
+      request<SupplyMarginHistory>(`/supply/margin-history/${ticker}`),
   },
   gold: {
     list: () => request<GoldLabel[]>("/gold"),
