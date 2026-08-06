@@ -1,0 +1,14 @@
+# Layer A supply-constraint screen thresholds — pre-registered, verbatim
+# from the task brief. Do not edit a value to make a candidate pass or fail
+# after seeing screen output: changing one requires an explicit reason in
+# the commit message. Tuning thresholds against output is how a screen
+# becomes an overfit story generator.
+
+gm_percentile_max: 0.40
+margin_headroom_min_pp: 10.0
+earnings_torque_min: 0.25
+gm_volatility_min_pp: 5.0
+capital_intensity_min: 0.5
+survivability_quarters_min: 8
+analyst_count_max: 12
+min_quarters_history: 24
