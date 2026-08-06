@@ -70,6 +70,7 @@ class MarginHistory:
     revenues: list[float]
     first_end: date | None
     last_end: date | None
+    dropped_implausible: int = 0
 
 
 def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
@@ -80,6 +81,20 @@ def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
     `gross_profit + cost_of_revenue`. Periods where neither resolves, or
     where the resolved revenue is not positive, are dropped rather than
     producing a wild or undefined margin.
+
+    A gross margin outside `(-1.0, 1.0]` is arithmetically impossible: profit
+    cannot exceed revenue, and cost cannot exceed revenue by more than
+    revenue itself without that being a tagging artefact in this dataset (see
+    Q4 10-K note below). Those quarters are dropped and counted in
+    `dropped_implausible` rather than silently corrupting a percentile — this
+    is a hard mathematical constraint, not a tunable threshold.
+
+    The most common source of an implausible margin: in Q4 a company files a
+    10-K rather than a 10-Q, so no consolidated quarterly revenue fact exists
+    for that period. The 80-100 day duration filter in `quarterly_series`
+    then may pick up a smaller-scoped fact (a segment or corporate line)
+    whose value is an order of magnitude too small, while gross profit
+    resolves correctly — producing a wildly overstated margin.
     """
     gross_profit_points = quarterly_series(facts, GROSS_PROFIT)
     revenue_by_end = {p.end: p.value for p in quarterly_series(facts, REVENUE)}
@@ -88,6 +103,7 @@ def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
     margins: list[float] = []
     revenues: list[float] = []
     ends: list[date] = []
+    dropped_implausible = 0
 
     for point in gross_profit_points:
         revenue = revenue_by_end.get(point.end)
@@ -100,7 +116,12 @@ def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
         if revenue <= 0:
             continue
 
-        margins.append(point.value / revenue)
+        margin = point.value / revenue
+        if not (-1.0 < margin <= 1.0):
+            dropped_implausible += 1
+            continue
+
+        margins.append(margin)
         revenues.append(revenue)
         ends.append(point.end)
 
@@ -110,6 +131,7 @@ def build_margin_history(facts: dict[str, Any]) -> MarginHistory:
         revenues=revenues,
         first_end=ends[0] if ends else None,
         last_end=ends[-1] if ends else None,
+        dropped_implausible=dropped_implausible,
     )
 
 

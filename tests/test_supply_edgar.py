@@ -89,6 +89,33 @@ def test_missing_concepts_yield_an_empty_series():
     assert quarterly_series(FACTS, ["NoSuchConcept"]) == []
 
 
+def test_same_filing_date_prefers_the_larger_consolidated_value():
+    """Same concept, same period end, same earliest filing date, two
+    different magnitudes reported (e.g. a consolidated total alongside a
+    segment/corporate line in the same filing) — the larger value wins,
+    since the consolidated total is by construction at least as large as
+    any segment of it.
+    """
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            _fact("2024-10-01", "2024-12-31", "2025-02-01", 2.58),
+                            _fact("2024-10-01", "2024-12-31", "2025-02-01", 31.68),
+                        ]
+                    }
+                },
+            }
+        }
+    }
+    pts = quarterly_series(facts, ["Revenues"])
+    assert len(pts) == 1
+    assert pts[0].value == 31.68
+    assert pts[0].filed == date(2025, 2, 1)
+
+
 def test_user_agent_declares_contact_details():
     """SEC blocks anonymous clients by IP; the header is not optional."""
     from app.supply.edgar import SEC_USER_AGENT

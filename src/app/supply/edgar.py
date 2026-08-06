@@ -96,6 +96,13 @@ def _parse_date(value: str) -> date | None:
 def _concept_quarterly_points(node: dict[str, Any]) -> dict[date, FactPoint]:
     """Quarter-length points for a single concept, deduplicated on period end
     keeping the earliest filing.
+
+    When the earliest filing date for a period has more than one reported
+    value (the same concept tagged at multiple scopes in one filing — e.g. a
+    consolidated total alongside a segment or corporate line), prefer the
+    LARGEST absolute value: the consolidated total is by construction at
+    least as large as any segment of it, so the larger figure is the more
+    plausible consolidated one.
     """
     points: dict[date, FactPoint] = {}
     for raw in (node.get("units") or {}).get("USD") or []:
@@ -110,11 +117,15 @@ def _concept_quarterly_points(node: dict[str, Any]) -> dict[date, FactPoint]:
         value = raw.get("val")
         if value is None:
             continue
+        value = float(value)
 
         existing = points.get(end)
-        if existing is not None and existing.filed <= filed:
-            continue  # earliest filing wins within this concept
-        points[end] = FactPoint(end=end, filed=filed, value=float(value))
+        if existing is not None:
+            if existing.filed < filed:
+                continue  # earliest filing wins within this concept
+            if existing.filed == filed and abs(existing.value) >= abs(value):
+                continue  # same filing date: larger magnitude is the consolidated figure
+        points[end] = FactPoint(end=end, filed=filed, value=value)
     return points
 
 

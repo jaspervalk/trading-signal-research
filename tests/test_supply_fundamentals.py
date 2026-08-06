@@ -75,3 +75,51 @@ def test_empty_facts_produce_an_empty_history_not_an_error():
     h = build_margin_history({"facts": {"us-gaap": {}}})
     assert h.quarters == 0
     assert h.gross_margins == []
+
+
+def test_gross_margin_above_one_is_dropped_and_counted():
+    """A Q4 10-K quarter where the duration filter picked up a segment-scoped
+    revenue fact an order of magnitude too small (see GE, ADR/bug writeup):
+    gross profit resolves fine but revenue is far too small, producing an
+    impossible >100% margin. This must be dropped, not reported.
+    """
+    facts = _facts(
+        gp=[_q("2024-10-01", "2024-12-31", "2025-02-01", 7.56)],
+        rev=[_q("2024-10-01", "2024-12-31", "2025-02-01", 2.58)],
+    )
+    h = build_margin_history(facts)
+    assert h.quarters == 0
+    assert h.gross_margins == []
+    assert h.dropped_implausible == 1
+
+
+def test_gross_margin_of_exactly_one_is_kept():
+    """A zero-cost quarter is implausible but not mathematically impossible —
+    the boundary is inclusive at 1.0."""
+    facts = _facts(
+        gp=[_q("2024-01-01", "2024-03-31", "2024-05-01", 100.0)],
+        rev=[_q("2024-01-01", "2024-03-31", "2024-05-01", 100.0)],
+    )
+    h = build_margin_history(facts)
+    assert h.gross_margins == [1.0]
+    assert h.dropped_implausible == 0
+
+
+def test_gross_margin_below_negative_one_is_dropped_and_counted():
+    facts = _facts(
+        gp=[_q("2024-01-01", "2024-03-31", "2024-05-01", -250.0)],
+        rev=[_q("2024-01-01", "2024-03-31", "2024-05-01", 100.0)],
+    )
+    h = build_margin_history(facts)
+    assert h.quarters == 0
+    assert h.dropped_implausible == 1
+
+
+def test_a_normal_quarter_is_unaffected_by_the_plausibility_check():
+    facts = _facts(
+        gp=[_q("2024-01-01", "2024-03-31", "2024-05-01", 40.0)],
+        rev=[_q("2024-01-01", "2024-03-31", "2024-05-01", 100.0)],
+    )
+    h = build_margin_history(facts)
+    assert h.gross_margins == [0.40]
+    assert h.dropped_implausible == 0
