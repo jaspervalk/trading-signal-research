@@ -253,7 +253,10 @@ function RankedWatchlist({
 
       {!loading && rows.length > 0 && (
         <div className="overflow-x-auto bg-[var(--panel)] border border-[var(--border)]">
-          <table className="w-full font-mono-jb text-[11px]">
+          {/* w-max, not w-full: with nowrap cells a full-width table is forced to the
+            container and the right-hand columns (status, trigger) clip instead of
+            scrolling. Sizing to content lets the overflow-x-auto wrapper do its job. */}
+        <table className="min-w-full w-max font-mono-jb text-[11px]">
             <thead>
               <tr className="text-left uppercase tracking-wider text-[var(--muted-foreground)] border-b border-[var(--hairline-2)]">
                 <Th>#</Th>
