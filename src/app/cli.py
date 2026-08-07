@@ -997,11 +997,20 @@ def supply_screen(
     """
     from pathlib import Path
 
-    from app.screener.universe import DEFAULT_UNIVERSE_PATH, load_universe
+    from app.config import REPO_ROOT
+    from app.screener.universe import load_universe
+    from app.supply.metrics import load_thresholds
     from app.supply.concentration import compute_end_market_concentration
     from app.supply.screen import run_supply_screen
 
-    universe_path_p = Path(universe_path) if universe_path else DEFAULT_UNIVERSE_PATH
+    # Same source of truth as the API: the screen's own config, not the other
+    # screener's S&P default. Running this from the CLI and from the dashboard
+    # must not silently screen two different universes.
+    universe_path_p = (
+        Path(universe_path)
+        if universe_path
+        else REPO_ROOT / load_thresholds().universe_path
+    )
     universe = load_universe(universe_path_p)
     if not universe:
         typer.echo("Universe is empty — nothing to screen.")
