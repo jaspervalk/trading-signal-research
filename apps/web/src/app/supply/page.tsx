@@ -61,13 +61,21 @@ export default function SupplyScreenerPage() {
 
   return (
     <div className="space-y-6 font-mono-jb min-w-0 max-w-full">
-      <div>
+      <div className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight">Supply-constraint screener</h1>
         <p className="text-xs uppercase tracking-wider text-[var(--muted-foreground)] mt-1.5 max-w-3xl normal-case">
           Gross-margin-compression candidates (Layer A) joined to a hand-curated
           supply-constraint registry (Layer B). Decision support only — nothing
           here is a price target, an entry price, or a recommendation.
         </p>
+        <a
+          href="https://github.com/jaspervalk/trading-signal-research/blob/main/docs/supply-screener.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] hover:text-[var(--info)]"
+        >
+          Read the methodology →
+        </a>
       </div>
 
       <ReRunBar
