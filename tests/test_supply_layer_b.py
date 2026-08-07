@@ -21,8 +21,8 @@ from app.supply.metrics import SupplyMetrics
 def _constraint(
     *,
     id: str = "test_constraint",
-    deficit_pct: float = 0.05,
-    expansion_lead_months: float = 18.0,
+    deficit_pct: float | None = 0.05,
+    expansion_lead_months: float | None = 18.0,
     confidence: str = "high",
     is_stale: bool = False,
     exposures: list[ConstraintExposure] | None = None,
@@ -192,6 +192,66 @@ def test_exposed_ticker_with_insufficient_history_is_recorded_with_none_score():
     results = run_layer_b([constraint], metrics_by_ticker)
     assert results[0].score is None
     assert "insufficient history" in results[0].reason
+
+
+# --- deficit_pct is optional: a constraint with capacity destruction but no
+# credible projected deficit can never produce a score (Change 3) ------------
+
+
+def test_null_deficit_pct_yields_no_score_but_still_a_recorded_result():
+    """The 2026-08-06 TiO2 entry shape: real Layer A coverage (torque
+    present) but no deficit_pct -- must be recorded with score=None and a
+    reason, not silently dropped or crashed on."""
+    constraint = _constraint(
+        deficit_pct=None, expansion_lead_months=None,
+        exposures=[_exposure("TROX", revenue_exposure_pct=0.95)],
+    )
+    metrics_by_ticker = {"TROX": _metrics(earnings_torque=0.5, coverage_multiplier=1.0)}
+    results = run_layer_b([constraint], metrics_by_ticker)
+    assert len(results) == 1
+    r = results[0]
+    assert r.score is None
+    assert r.reason is not None
+    assert "deficit_pct" in r.reason
+    # Every input still travels with the result, even when unscoreable.
+    assert r.deficit_pct is None
+    assert r.expansion_lead_months is None
+    assert r.expansion_lead_factor is None
+    assert r.earnings_torque == pytest.approx(0.5)
+
+
+def test_null_deficit_pct_takes_priority_reason_over_missing_torque_is_still_distinct():
+    """When BOTH torque and deficit_pct are missing, the earnings_torque
+    reason wins (torque is checked first) -- still recorded, still distinct
+    reasons, never crashes."""
+    constraint = _constraint(
+        deficit_pct=None, expansion_lead_months=None, exposures=[_exposure("ZZZZ")]
+    )
+    results = run_layer_b([constraint], metrics_by_ticker={})
+    assert results[0].score is None
+    assert "earnings_torque" in results[0].reason
+
+
+def test_present_deficit_pct_with_torque_scores_normally_even_when_other_constraint_is_null():
+    """A null deficit_pct on one constraint must not affect scoring of a
+    different constraint with a real deficit_pct."""
+    null_constraint = _constraint(
+        id="null_one", deficit_pct=None, expansion_lead_months=None,
+        exposures=[_exposure("TROX")],
+    )
+    real_constraint = _constraint(
+        id="real_one", deficit_pct=0.05, expansion_lead_months=18.0,
+        exposures=[_exposure("WDC")],
+    )
+    metrics_by_ticker = {
+        "TROX": _metrics(earnings_torque=0.5),
+        "WDC": _metrics(earnings_torque=0.5),
+    }
+    results = run_layer_b([null_constraint, real_constraint], metrics_by_ticker)
+    trox = next(r for r in results if r.ticker == "TROX")
+    wdc = next(r for r in results if r.ticker == "WDC")
+    assert trox.score is None
+    assert wdc.score is not None
 
 
 # --- ticker matching is case-insensitive -------------------------------------

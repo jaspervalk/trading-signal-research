@@ -92,3 +92,91 @@ constraints:
           until someone pulls MU's actual NAND revenue segment split from
           DRAM.
         is_pure_play: false
+
+  # --------------------------------------------------------------------------
+  # Second entry: TiO2 pigment. Deliberately LOW confidence, and deliberately
+  # has NO deficit_pct — the owner researched real, documented Western
+  # capacity destruction (Tronox Botlek/Fuzhou closures, Venator's
+  # bankruptcy, a Q1 2026 volume-to-margin price push) but the SAME research
+  # turned up counter-evidence just as strong: July 2026 Chinese prices fell
+  # while producer inventories rose, and Chinese TiO2 exports are up sharply
+  # year-on-year — i.e. Western capacity is closing while Chinese exports
+  # fill the gap. That is not a deficit story; it is an unresolved one. This
+  # entry states both sides in the SAME record rather than picking a side,
+  # per the owner's brief (2026-08-06). No deficit percentage is invented.
+  # --------------------------------------------------------------------------
+  - id: tio2_pigment_2026_capacity_vs_chinese_supply
+    market: TiO2 pigment (paint & coatings — dominant end market is construction/housing)
+    # No credible projected deficit — see counter_evidence below. This is
+    # the entire reason confidence is "low": real capacity destruction on
+    # one side, real oversupply/export growth on the other, and the two
+    # haven't resolved into a number worth putting here.
+    deficit_pct: null
+    deficit_source: >-
+      Owner's research (2026-08-06): Tronox permanently closed its Botlek,
+      Netherlands plant (90,000 tonnes) in March 2025 and its Fuzhou plant
+      in January 2026; Venator went through bankruptcy and restructuring;
+      Tronox pushed global TiO2 price increases of 2-4% in Q1 2026 despite
+      weak demand, an explicit shift from volume to margin; North American
+      and European prices rose in Q1 2026 on tighter supply.
+    deficit_horizon: >-
+      Not applicable — no credible deficit is currently projected. The
+      capacity-destruction evidence above and the Chinese-oversupply
+      counter-evidence below cover the same 2025-2026 window without
+      resolving into a net deficit or surplus call.
+    expansion_lead_months: null
+    demand_driver: >-
+      Weak — construction/housing demand (TiO2's dominant end use, per the
+      owner's cross-ticker review of TROX/KRO/CC) has not been strong
+      enough to absorb the closed Western capacity without China's export
+      growth filling the gap. This is a supply-destruction thesis riding on
+      soft demand, not a demand-driven deficit.
+    capacity_history: >-
+      Documented closures: Tronox Botlek, Netherlands (90,000 tonnes,
+      closed permanently March 2025) and Tronox Fuzhou (closed January
+      2026); Venator's bankruptcy and restructuring further reduced
+      Western supply. Tronox pushed global price increases of 2-4% in Q1
+      2026 despite weak demand — a volume-to-margin shift consistent with a
+      producer managing a shrinking, not growing, market. North American
+      and European prices rose in Q1 2026 on tighter supply.
+    counter_evidence: >-
+      Directly counters the capacity-destruction thesis above, in the same
+      entry, per the owner's brief (2026-08-06): July 2026 TiO2 prices fell
+      RMB 1,900/tonne while producer inventories rose 23.26%; Chinese
+      titanium concentrate remains oversupplied with sluggish
+      property-chain demand; Chinese TiO2 exports were up 40.43%
+      year-on-year in June 2026 and 16.56% across the first half of 2026.
+      Western capacity is closing and Chinese exports are filling the gap —
+      that tension, unresolved, is why this entry is confidence=low rather
+      than a deficit call.
+    confidence: low
+    last_reviewed: "2026-08-06"
+    exposures:
+      - ticker: TROX
+        # Pure-play TiO2 producer — high confidence in the exposure
+        # percentage itself, but see the entry-level counter_evidence above
+        # for why the underlying deficit thesis is NOT high confidence.
+        revenue_exposure_pct: 0.95
+        exposure_source: >-
+          UNVERIFIED estimate pending 10-K segment work. Tronox is
+          substantially a pure-play TiO2 pigment producer; 0.95 is a rough
+          placeholder, not a filed segment disclosure.
+        is_pure_play: true
+      - ticker: KRO
+        revenue_exposure_pct: 0.95
+        exposure_source: >-
+          UNVERIFIED estimate pending 10-K segment work. Kronos Worldwide is
+          a pure-play TiO2 pigment producer; 0.95 is a rough placeholder,
+          not a filed segment disclosure.
+        is_pure_play: true
+      - ticker: CC
+        # Chemours: TiO2 (Ti-Pure) is the largest segment but Chemours is
+        # NOT a pure play — Thermal & Specialized Solutions and Advanced
+        # Performance Materials are separate segments.
+        revenue_exposure_pct: 0.4
+        exposure_source: >-
+          UNVERIFIED rough estimate pending 10-K segment-level work. Ti-Pure
+          (TiO2) is Chemours' largest reported segment by revenue but not
+          the whole business — treat as a placeholder until someone pulls
+          Chemours' actual segment revenue split.
+        is_pure_play: false

@@ -60,11 +60,17 @@ class LayerBResult:
     score: Optional[float]
     reason: Optional[str]
 
-    # Every factor of the score formula, visible on its own.
+    # Every factor of the score formula, visible on its own. deficit_pct /
+    # expansion_lead_months / expansion_lead_factor are Optional because a
+    # constraint may document real capacity destruction with no credible
+    # PROJECTED deficit (see app.supply.constraints.Constraint) — that
+    # constraint can never produce a score (see `_score_one`), but it still
+    # produces a `LayerBResult` with `score=None` and a `reason`, same
+    # "recorded, not dropped" discipline as everywhere else in Layer A/B.
     earnings_torque: Optional[float]
-    deficit_pct: float
-    expansion_lead_months: float
-    expansion_lead_factor: float  # min(expansion_lead_months / 18.0, 2.0)
+    deficit_pct: Optional[float]
+    expansion_lead_months: Optional[float]
+    expansion_lead_factor: Optional[float]  # min(expansion_lead_months / 18.0, 2.0)
     revenue_exposure_pct: float
     confidence: str
     confidence_weight: float
@@ -84,9 +90,13 @@ def _score_one(
     metrics: Optional[SupplyMetrics],
 ) -> LayerBResult:
     confidence_weight = CONFIDENCE_WEIGHTS[constraint.confidence]
-    expansion_lead_factor = min(
-        constraint.expansion_lead_months / EXPANSION_LEAD_REFERENCE_MONTHS,
-        EXPANSION_LEAD_CAP,
+    expansion_lead_factor: Optional[float] = (
+        min(
+            constraint.expansion_lead_months / EXPANSION_LEAD_REFERENCE_MONTHS,
+            EXPANSION_LEAD_CAP,
+        )
+        if constraint.expansion_lead_months is not None
+        else None
     )
 
     earnings_torque = metrics.earnings_torque if metrics is not None else None
@@ -102,6 +112,17 @@ def _score_one(
             "no earnings_torque from Layer A ("
             + ("ticker not screened" if metrics is None else "insufficient history")
             + ")"
+        )
+    elif constraint.deficit_pct is None or expansion_lead_factor is None:
+        # Documented capacity destruction with no credible PROJECTED deficit
+        # is a legitimate, honest state (see Constraint docstring) — it just
+        # can't feed a score that multiplies by a deficit_pct that doesn't
+        # exist. Recorded, not dropped, same as every other unscoreable case.
+        score = None
+        reason = (
+            "constraint has no credible deficit_pct / expansion_lead_months — "
+            "documented capacity destruction only, no projected deficit "
+            "(see capacity_history / counter_evidence)"
         )
     else:
         score = (

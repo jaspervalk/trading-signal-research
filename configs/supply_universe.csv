@@ -1,108 +1,108 @@
-ticker,name,sector,source
-AVTR,"Avantor, Inc.",cdmo_pharma_mfg,seed
-BIO,"BIO-RAD LABORATORIES, INC.",cdmo_pharma_mfg,seed
-ITGR,"Integer Holdings Corp",cdmo_pharma_mfg,seed
-RGEN,"REPLIGEN CORP",cdmo_pharma_mfg,seed
-WST,"WEST PHARMACEUTICAL SERVICES INC",cdmo_pharma_mfg,seed
-ERO,"Ero Copper Corp.",copper_mining,seed
-FCX,"FREEPORT-MCMORAN INC",copper_mining,seed
-HBM,"Hudbay Minerals Inc.",copper_mining,seed
-NEXA,"Nexa Resources S.A.",copper_mining,seed
-SCCO,"SOUTHERN COPPER CORP/",copper_mining,seed
-TECK,"TECK RESOURCES LTD",copper_mining,seed
-ATKR,"Atkore Inc.",grid_equipment,seed
-AZZ,"AZZ INC",grid_equipment,seed
-BE,"Bloom Energy Corp",grid_equipment,seed
-ENR,"ENERGIZER HOLDINGS, INC.",grid_equipment,seed
-ENS,"EnerSys",grid_equipment,seed
-ETN,"Eaton Corp plc",grid_equipment,seed
-GEV,"GE Vernova Inc.",grid_equipment,seed
-HUBB,"HUBBELL INC",grid_equipment,seed
-NVT,"nVent Electric plc",grid_equipment,seed
-PLPC,"PREFORMED LINE PRODUCTS CO",grid_equipment,seed
-POWL,"POWELL INDUSTRIES INC",grid_equipment,seed
-VRT,"Vertiv Holdings Co",grid_equipment,seed
-APD,"Air Products & Chemicals, Inc.",industrial_gas,seed
-LIN,"LINDE PLC",industrial_gas,seed
-NGVT,"Ingevity Corp",industrial_gas,seed
-AAOI,"APPLIED OPTOELECTRONICS, INC.",memory_optical,seed
-APLD,"Applied Digital Corp.",memory_optical,seed
-COHR,"COHERENT CORP.",memory_optical,seed
-FN,"Fabrinet",memory_optical,seed
-LITE,"Lumentum Holdings Inc.",memory_optical,seed
-MU,"MICRON TECHNOLOGY INC",memory_optical,seed
-POET,"POET TECHNOLOGIES INC.",memory_optical,seed
-STX,"Seagate Technology Holdings plc",memory_optical,seed
-WDC,"WESTERN DIGITAL CORP",memory_optical,seed
-HLX,"HELIX ENERGY SOLUTIONS GROUP INC",offshore_drilling,seed
-HP,"Helmerich & Payne, Inc.",offshore_drilling,seed
-LBRT,"Liberty Energy Inc.",offshore_drilling,seed
-NBR,"NABORS INDUSTRIES LTD",offshore_drilling,seed
-NE,"Noble Corp plc",offshore_drilling,seed
-OII,"OCEANEERING INTERNATIONAL INC",offshore_drilling,seed
-PTEN,"PATTERSON UTI ENERGY INC",offshore_drilling,seed
-RES,"RPC INC",offshore_drilling,seed
-RIG,"Transocean Ltd.",offshore_drilling,seed
-SDRL,"SEADRILL Ltd",offshore_drilling,seed
-TDW,"TIDEWATER INC",offshore_drilling,seed
-VAL,"Valaris Ltd",offshore_drilling,seed
-WFRD,"Weatherford International plc",offshore_drilling,seed
-ACLS,"AXCELIS TECHNOLOGIES INC",semicap,seed
-AEIS,"ADVANCED ENERGY INDUSTRIES INC",semicap,seed
-AMBA,"AMBARELLA INC",semicap,seed
-AMKR,"AMKOR TECHNOLOGY, INC.",semicap,seed
-COHU,"COHU INC",semicap,seed
-FORM,"FORMFACTOR INC",semicap,seed
-ICHR,"ICHOR HOLDINGS, LTD.",semicap,seed
-MKSI,"MKS INC",semicap,seed
-ONTO,"ONTO INNOVATION INC.",semicap,seed
-PLAB,"PHOTRONICS INC",semicap,seed
-UCTT,"Ultra Clean Holdings, Inc.",semicap,seed
-VECO,"VEECO INSTRUMENTS INC",semicap,seed
-ASC,"Ardmore Shipping Corp",shipping,seed
-DHT,"DHT Holdings, Inc.",shipping,seed
-FRO,"Frontline plc",shipping,seed
-GNK,"GENCO SHIPPING & TRADING LTD",shipping,seed
-INSW,"International Seaways, Inc.",shipping,seed
-KEX,"KIRBY CORP",shipping,seed
-MATX,"Matson, Inc.",shipping,seed
-SBLK,"Star Bulk Carriers Corp.",shipping,seed
-STNG,"Scorpio Tankers Inc.",shipping,seed
-TNK,"TEEKAY TANKERS LTD.",shipping,seed
-ASH,"ASHLAND INC.",specialty_chemicals,seed
-AVNT,"AVIENT CORP",specialty_chemicals,seed
-CC,"Chemours Co",specialty_chemicals,seed
-CE,"Celanese Corp",specialty_chemicals,seed
-DOW,"DOW INC.",specialty_chemicals,seed
-EMN,"EASTMAN CHEMICAL CO",specialty_chemicals,seed
-FUL,"FULLER H B CO",specialty_chemicals,seed
-HUN,"Huntsman CORP",specialty_chemicals,seed
-IOSP,"INNOSPEC INC.",specialty_chemicals,seed
-KRO,"KRONOS WORLDWIDE INC",specialty_chemicals,seed
-LYB,"LyondellBasell Industries N.V.",specialty_chemicals,seed
-NEU,"NEWMARKET CORP",specialty_chemicals,seed
-OLN,"OLIN Corp",specialty_chemicals,seed
-SCL,"STEPAN CO",specialty_chemicals,seed
-TROX,"Tronox Holdings plc",specialty_chemicals,seed
-WLK,"WESTLAKE CORP",specialty_chemicals,seed
-AA,"Alcoa Corp",specialty_metals,seed
-ATI,"ATI INC",specialty_metals,seed
-CENX,"CENTURY ALUMINUM CO",specialty_metals,seed
-CLF,"CLEVELAND-CLIFFS INC.",specialty_metals,seed
-CMC,"COMMERCIAL METALS Co",specialty_metals,seed
-CRS,"CARPENTER TECHNOLOGY CORP",specialty_metals,seed
-HWM,"Howmet Aerospace Inc.",specialty_metals,seed
-KALU,"KAISER ALUMINUM CORP",specialty_metals,seed
-MP,"MP Materials Corp. / DE",specialty_metals,seed
-NUE,"NUCOR CORP",specialty_metals,seed
-RS,"RELIANCE, INC.",specialty_metals,seed
-STLD,"STEEL DYNAMICS INC",specialty_metals,seed
-BWXT,"BWX Technologies, Inc.",uranium_enrichment,seed
-CCJ,"CAMECO CORP",uranium_enrichment,seed
-LEU,"CENTRUS ENERGY CORP",uranium_enrichment,seed
-LTBR,"LIGHTBRIDGE Corp",uranium_enrichment,seed
-OKLO,"Oklo Inc.",uranium_enrichment,seed
-SMR,"NUSCALE POWER Corp",uranium_enrichment,seed
-UEC,"URANIUM ENERGY CORP",uranium_enrichment,seed
-URG,"UR-ENERGY INC",uranium_enrichment,seed
-UUUU,"ENERGY FUELS INC",uranium_enrichment,seed
+ticker,name,sector,source,end_market
+AVTR,"Avantor, Inc.",cdmo_pharma_mfg,seed,healthcare
+BIO,"BIO-RAD LABORATORIES, INC.",cdmo_pharma_mfg,seed,healthcare
+ITGR,Integer Holdings Corp,cdmo_pharma_mfg,seed,healthcare
+RGEN,REPLIGEN CORP,cdmo_pharma_mfg,seed,healthcare
+WST,WEST PHARMACEUTICAL SERVICES INC,cdmo_pharma_mfg,seed,healthcare
+ERO,Ero Copper Corp.,copper_mining,seed,power_grid
+FCX,FREEPORT-MCMORAN INC,copper_mining,seed,power_grid
+HBM,Hudbay Minerals Inc.,copper_mining,seed,power_grid
+NEXA,Nexa Resources S.A.,copper_mining,seed,power_grid
+SCCO,SOUTHERN COPPER CORP/,copper_mining,seed,power_grid
+TECK,TECK RESOURCES LTD,copper_mining,seed,power_grid
+ATKR,Atkore Inc.,grid_equipment,seed,power_grid
+AZZ,AZZ INC,grid_equipment,seed,power_grid
+BE,Bloom Energy Corp,grid_equipment,seed,datacenter
+ENR,"ENERGIZER HOLDINGS, INC.",grid_equipment,seed,consumer
+ENS,EnerSys,grid_equipment,seed,power_grid
+ETN,Eaton Corp plc,grid_equipment,seed,power_grid
+GEV,GE Vernova Inc.,grid_equipment,seed,power_grid
+HUBB,HUBBELL INC,grid_equipment,seed,power_grid
+NVT,nVent Electric plc,grid_equipment,seed,power_grid
+PLPC,PREFORMED LINE PRODUCTS CO,grid_equipment,seed,power_grid
+POWL,POWELL INDUSTRIES INC,grid_equipment,seed,power_grid
+VRT,Vertiv Holdings Co,grid_equipment,seed,datacenter
+APD,"Air Products & Chemicals, Inc.",industrial_gas,seed,
+LIN,LINDE PLC,industrial_gas,seed,
+NGVT,Ingevity Corp,industrial_gas,seed,autos
+AAOI,"APPLIED OPTOELECTRONICS, INC.",memory_optical,seed,datacenter
+APLD,Applied Digital Corp.,memory_optical,seed,datacenter
+COHR,COHERENT CORP.,memory_optical,seed,datacenter
+FN,Fabrinet,memory_optical,seed,datacenter
+LITE,Lumentum Holdings Inc.,memory_optical,seed,datacenter
+MU,MICRON TECHNOLOGY INC,memory_optical,seed,datacenter
+POET,POET TECHNOLOGIES INC.,memory_optical,seed,datacenter
+STX,Seagate Technology Holdings plc,memory_optical,seed,datacenter
+WDC,WESTERN DIGITAL CORP,memory_optical,seed,datacenter
+HLX,HELIX ENERGY SOLUTIONS GROUP INC,offshore_drilling,seed,energy
+HP,"Helmerich & Payne, Inc.",offshore_drilling,seed,energy
+LBRT,Liberty Energy Inc.,offshore_drilling,seed,energy
+NBR,NABORS INDUSTRIES LTD,offshore_drilling,seed,energy
+NE,Noble Corp plc,offshore_drilling,seed,energy
+OII,OCEANEERING INTERNATIONAL INC,offshore_drilling,seed,energy
+PTEN,PATTERSON UTI ENERGY INC,offshore_drilling,seed,energy
+RES,RPC INC,offshore_drilling,seed,energy
+RIG,Transocean Ltd.,offshore_drilling,seed,energy
+SDRL,SEADRILL Ltd,offshore_drilling,seed,energy
+TDW,TIDEWATER INC,offshore_drilling,seed,energy
+VAL,Valaris Ltd,offshore_drilling,seed,energy
+WFRD,Weatherford International plc,offshore_drilling,seed,energy
+ACLS,AXCELIS TECHNOLOGIES INC,semicap,seed,semiconductors
+AEIS,ADVANCED ENERGY INDUSTRIES INC,semicap,seed,semiconductors
+AMBA,AMBARELLA INC,semicap,seed,autos
+AMKR,"AMKOR TECHNOLOGY, INC.",semicap,seed,semiconductors
+COHU,COHU INC,semicap,seed,semiconductors
+FORM,FORMFACTOR INC,semicap,seed,semiconductors
+ICHR,"ICHOR HOLDINGS, LTD.",semicap,seed,semiconductors
+MKSI,MKS INC,semicap,seed,semiconductors
+ONTO,ONTO INNOVATION INC.,semicap,seed,semiconductors
+PLAB,PHOTRONICS INC,semicap,seed,semiconductors
+UCTT,"Ultra Clean Holdings, Inc.",semicap,seed,semiconductors
+VECO,VEECO INSTRUMENTS INC,semicap,seed,semiconductors
+ASC,Ardmore Shipping Corp,shipping,seed,shipping_trade
+DHT,"DHT Holdings, Inc.",shipping,seed,shipping_trade
+FRO,Frontline plc,shipping,seed,shipping_trade
+GNK,GENCO SHIPPING & TRADING LTD,shipping,seed,shipping_trade
+INSW,"International Seaways, Inc.",shipping,seed,shipping_trade
+KEX,KIRBY CORP,shipping,seed,shipping_trade
+MATX,"Matson, Inc.",shipping,seed,shipping_trade
+SBLK,Star Bulk Carriers Corp.,shipping,seed,shipping_trade
+STNG,Scorpio Tankers Inc.,shipping,seed,shipping_trade
+TNK,TEEKAY TANKERS LTD.,shipping,seed,shipping_trade
+ASH,ASHLAND INC.,specialty_chemicals,seed,consumer
+AVNT,AVIENT CORP,specialty_chemicals,seed,consumer
+CC,Chemours Co,specialty_chemicals,seed,construction
+CE,Celanese Corp,specialty_chemicals,seed,autos
+DOW,DOW INC.,specialty_chemicals,seed,consumer
+EMN,EASTMAN CHEMICAL CO,specialty_chemicals,seed,consumer
+FUL,FULLER H B CO,specialty_chemicals,seed,construction
+HUN,Huntsman CORP,specialty_chemicals,seed,construction
+IOSP,INNOSPEC INC.,specialty_chemicals,seed,energy
+KRO,KRONOS WORLDWIDE INC,specialty_chemicals,seed,construction
+LYB,LyondellBasell Industries N.V.,specialty_chemicals,seed,consumer
+NEU,NEWMARKET CORP,specialty_chemicals,seed,autos
+OLN,OLIN Corp,specialty_chemicals,seed,construction
+SCL,STEPAN CO,specialty_chemicals,seed,consumer
+TROX,Tronox Holdings plc,specialty_chemicals,seed,construction
+WLK,WESTLAKE CORP,specialty_chemicals,seed,construction
+AA,Alcoa Corp,specialty_metals,seed,autos
+ATI,ATI INC,specialty_metals,seed,aerospace_defense
+CENX,CENTURY ALUMINUM CO,specialty_metals,seed,autos
+CLF,CLEVELAND-CLIFFS INC.,specialty_metals,seed,autos
+CMC,COMMERCIAL METALS Co,specialty_metals,seed,construction
+CRS,CARPENTER TECHNOLOGY CORP,specialty_metals,seed,aerospace_defense
+HWM,Howmet Aerospace Inc.,specialty_metals,seed,aerospace_defense
+KALU,KAISER ALUMINUM CORP,specialty_metals,seed,aerospace_defense
+MP,MP Materials Corp. / DE,specialty_metals,seed,aerospace_defense
+NUE,NUCOR CORP,specialty_metals,seed,construction
+RS,"RELIANCE, INC.",specialty_metals,seed,construction
+STLD,STEEL DYNAMICS INC,specialty_metals,seed,construction
+BWXT,"BWX Technologies, Inc.",uranium_enrichment,seed,aerospace_defense
+CCJ,CAMECO CORP,uranium_enrichment,seed,nuclear_fuel
+LEU,CENTRUS ENERGY CORP,uranium_enrichment,seed,nuclear_fuel
+LTBR,LIGHTBRIDGE Corp,uranium_enrichment,seed,nuclear_fuel
+OKLO,Oklo Inc.,uranium_enrichment,seed,datacenter
+SMR,NUSCALE POWER Corp,uranium_enrichment,seed,power_grid
+UEC,URANIUM ENERGY CORP,uranium_enrichment,seed,nuclear_fuel
+URG,UR-ENERGY INC,uranium_enrichment,seed,nuclear_fuel
+UUUU,ENERGY FUELS INC,uranium_enrichment,seed,nuclear_fuel

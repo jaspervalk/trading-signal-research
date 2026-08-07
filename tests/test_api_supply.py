@@ -20,6 +20,7 @@ from app.screener.universe import UniverseEntry
 from app.supply.constraints import Constraint, ConstraintExposure
 from app.supply.metrics import SupplyMetrics
 from app.supply.screen import ScreenResult
+from app.supply.triggers import evaluate_gross_margin_inflection
 
 
 @pytest.fixture
@@ -31,9 +32,15 @@ def client():
 
 def _universe():
     return [
-        UniverseEntry(ticker="WDC", name="Western Digital", sector="Technology"),
-        UniverseEntry(ticker="MU", name="Micron", sector="Technology"),
-        UniverseEntry(ticker="ZZZ", name="Nothing Found", sector="Industrials"),
+        UniverseEntry(
+            ticker="WDC", name="Western Digital", sector="Technology", end_market="datacenter"
+        ),
+        UniverseEntry(
+            ticker="MU", name="Micron", sector="Technology", end_market="datacenter"
+        ),
+        UniverseEntry(
+            ticker="ZZZ", name="Nothing Found", sector="Industrials", end_market=""
+        ),
     ]
 
 
@@ -56,6 +63,9 @@ def _metrics(**overrides) -> SupplyMetrics:
 
 
 def _screen_results():
+    # A clean inflection: 4-quarter decline (.30 -> .20) then 2 expanding
+    # quarters -- exercises the "firing" path end to end through the API.
+    wdc_trigger = evaluate_gross_margin_inflection([0.30, 0.28, 0.26, 0.20, 0.22, 0.25])
     return [
         ScreenResult(
             ticker="WDC",
@@ -64,6 +74,7 @@ def _screen_results():
             passed=True,
             reasons=[],
             dropped_implausible=1,
+            trigger=wdc_trigger,
         ),
         ScreenResult(
             ticker="MU",
@@ -79,6 +90,7 @@ def _screen_results():
             passed=False,
             reasons=["insufficient_history: 10 quarters (need >= 24)"],
             dropped_implausible=0,
+            trigger=evaluate_gross_margin_inflection([0.30, 0.28, 0.26]),
         ),
         ScreenResult(
             ticker="ZZZ",
@@ -126,7 +138,10 @@ def test_get_screen_returns_expected_shape(client):
     wdc = next(row for row in body["rows"] if row["ticker"] == "WDC")
     assert wdc["passed"] is True
     assert wdc["sector"] == "Technology"
+    assert wdc["end_market"] == "datacenter"
     assert wdc["dropped_implausible"] == 1
+    assert wdc["trigger"]["status"] == "firing"
+    assert wdc["trigger"]["draws_attention"] is True
     for key in (
         "quarters_of_history",
         "analyst_count",
@@ -161,6 +176,46 @@ def test_get_screen_limit_truncates_rows_not_coverage(client):
     body = r.json()
     assert len(body["rows"]) == 1
     assert body["coverage"]["universe"] == 3
+
+
+# --- end-market concentration (Change 2, reporting only) ---------------------
+
+
+def test_get_screen_includes_concentration_block(client):
+    r = client.get("/supply/screen")
+    body = r.json()
+    assert "concentration" in body
+    c = body["concentration"]
+    assert c["top_n"] == 5
+    # WDC + MU both classified "datacenter"; ZZZ unclassified (blank).
+    assert c["rows_classified"] == 2
+    assert c["dominant_end_market"] == "datacenter"
+    assert c["dominant_count"] == 2
+    assert "datacenter" in c["summary"]
+
+
+def test_concentration_never_changes_row_order(client):
+    """Reporting only: the concentration block must not affect which row
+    is ranked first (still earnings_torque within the passing tier)."""
+    r = client.get("/supply/screen")
+    body = r.json()
+    assert body["rows"][0]["ticker"] == "WDC"
+
+
+# --- trigger status (Change 4) ------------------------------------------------
+
+
+def test_get_screen_row_without_a_trigger_is_null(client):
+    r = client.get("/supply/screen")
+    zzz = next(row for row in r.json()["rows"] if row["ticker"] == "ZZZ")
+    assert zzz["trigger"] is None
+
+
+def test_get_screen_quiet_trigger_does_not_draw_attention(client):
+    r = client.get("/supply/screen")
+    mu = next(row for row in r.json()["rows"] if row["ticker"] == "MU")
+    assert mu["trigger"] is not None
+    assert mu["trigger"]["draws_attention"] is False
 
 
 # --- POST /supply/screen/refresh --------------------------------------------
@@ -237,6 +292,23 @@ def test_get_constraints_returns_registry_with_exposures(client, monkeypatch):
             "is_pure_play": False,
         }
     ]
+
+
+def test_get_constraints_serializes_null_deficit_pct_and_counter_evidence(client, monkeypatch):
+    tio2 = _constraint(
+        id="tio2_test",
+        deficit_pct=None,
+        expansion_lead_months=None,
+        confidence="low",
+        counter_evidence="Chinese exports are filling the gap.",
+    )
+    monkeypatch.setattr(supply_routes, "load_constraints", lambda: [tio2])
+    r = client.get("/supply/constraints")
+    body = r.json()[0]
+    assert body["deficit_pct"] is None
+    assert body["expansion_lead_months"] is None
+    assert body["confidence"] == "low"
+    assert body["counter_evidence"] == "Chinese exports are filling the gap."
 
 
 def test_get_constraints_surfaces_stale_flag(client, monkeypatch):

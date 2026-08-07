@@ -34,6 +34,7 @@ from app.cli import _fetch_supply_market_data, _supply_screen_sort_key
 from app.logging import get_logger
 from app.screener.universe import load_universe
 from app.supply import cache as edgar_cache
+from app.supply.concentration import DEFAULT_TOP_N, compute_end_market_concentration
 from app.supply.constraints import load_constraints
 from app.supply.edgar import company_facts, ticker_to_cik
 from app.supply.fundamentals import build_margin_history
@@ -66,9 +67,24 @@ class SupplyMetricsOut(BaseModel):
     caveats: list[str]
 
 
+class SupplyTriggerOut(BaseModel):
+    """Layer C gross-margin inflection status (`app.supply.triggers`). Only
+    `firing`/`confirmed` (`draws_attention`) are meant to catch a reader's
+    eye — `armed` stays quiet, per the brief."""
+
+    status: str
+    expansion_streak: int
+    prior_decline_pp: Optional[float] = None
+    detail: str
+    draws_attention: bool
+
+
 class SupplyScreenRowOut(BaseModel):
     ticker: str
     sector: Optional[str] = None
+    # Deliberately coarser than `sector` — see app.supply.concentration
+    # module docstring. Reporting only; never affects `passed`/ordering.
+    end_market: Optional[str] = None
     cik: Optional[int] = None
     passed: bool
     reasons: list[str]
@@ -77,6 +93,7 @@ class SupplyScreenRowOut(BaseModel):
     # history doesn't look trustworthy when it isn't.
     dropped_implausible: int
     metrics: Optional[SupplyMetricsOut] = None
+    trigger: Optional[SupplyTriggerOut] = None
 
 
 class SupplyScreenCoverage(BaseModel):
@@ -86,9 +103,23 @@ class SupplyScreenCoverage(BaseModel):
     passed: int
 
 
+class EndMarketConcentrationOut(BaseModel):
+    """Reporting only — see app.supply.concentration module docstring. Never
+    weights, filters, or reorders `rows` above."""
+
+    top_n: int
+    rows_considered: int
+    rows_classified: int
+    dominant_end_market: Optional[str] = None
+    dominant_count: int
+    breakdown: dict[str, int]
+    summary: str
+
+
 class SupplyScreenResponse(BaseModel):
     as_of: datetime
     coverage: SupplyScreenCoverage
+    concentration: EndMarketConcentrationOut
     rows: list[SupplyScreenRowOut]
 
 
@@ -102,12 +133,19 @@ class ConstraintExposureOut(BaseModel):
 class ConstraintOut(BaseModel):
     id: str
     market: str
-    deficit_pct: float
+    # Optional: a constraint may document real capacity destruction with no
+    # credible PROJECTED deficit (see app.supply.constraints.Constraint) —
+    # e.g. the TiO2 entry, where confidence=low precisely because the
+    # deficit and counter-evidence haven't resolved into a number.
+    deficit_pct: Optional[float] = None
     deficit_source: str
     deficit_horizon: str
-    expansion_lead_months: float
+    expansion_lead_months: Optional[float] = None
     demand_driver: str
     capacity_history: str
+    # Evidence that argues AGAINST the thesis above, in the same entry.
+    # Optional — most entries don't need one.
+    counter_evidence: Optional[str] = None
     confidence: str
     last_reviewed: date
     is_stale: bool
@@ -152,6 +190,18 @@ def _metrics_out(metrics) -> Optional[SupplyMetricsOut]:  # noqa: ANN001
     )
 
 
+def _trigger_out(trigger) -> Optional[SupplyTriggerOut]:  # noqa: ANN001
+    if trigger is None:
+        return None
+    return SupplyTriggerOut(
+        status=trigger.status,
+        expansion_streak=trigger.expansion_streak,
+        prior_decline_pp=trigger.prior_decline_pp,
+        detail=trigger.detail,
+        draws_attention=trigger.draws_attention,
+    )
+
+
 def _run_screen(limit: int) -> SupplyScreenResponse:
     """Same pipeline as `tsr supply-screen`: resolve the universe, fetch
     market caps / analyst counts (cached), run Layer A, rank by
@@ -168,6 +218,7 @@ def _run_screen(limit: int) -> SupplyScreenResponse:
 
     tickers = [e.ticker for e in universe]
     sector_by_ticker = {e.ticker.upper(): (e.sector or None) for e in universe}
+    end_market_by_ticker = {e.ticker.upper(): (e.end_market or None) for e in universe}
 
     market_caps, analyst_counts = _fetch_supply_market_data(tickers)
     results = run_supply_screen(
@@ -183,15 +234,23 @@ def _run_screen(limit: int) -> SupplyScreenResponse:
     ordered = sorted(results, key=_supply_screen_sort_key)
     shown = ordered[:limit]
 
+    # REPORTING ONLY — see app.supply.concentration module docstring. Reads
+    # off the full ranked order, never affects `shown`/`rows` below.
+    concentration = compute_end_market_concentration(
+        [r.ticker for r in ordered], end_market_by_ticker, top_n=DEFAULT_TOP_N
+    )
+
     rows = [
         SupplyScreenRowOut(
             ticker=r.ticker,
             sector=sector_by_ticker.get(r.ticker.upper()),
+            end_market=end_market_by_ticker.get(r.ticker.upper()),
             cik=r.cik,
             passed=r.passed,
             reasons=r.reasons,
             dropped_implausible=r.dropped_implausible,
             metrics=_metrics_out(r.metrics),
+            trigger=_trigger_out(r.trigger),
         )
         for r in shown
     ]
@@ -203,6 +262,15 @@ def _run_screen(limit: int) -> SupplyScreenResponse:
             resolved=len(resolved),
             sufficient_history=len(had_history),
             passed=len(passed),
+        ),
+        concentration=EndMarketConcentrationOut(
+            top_n=concentration.top_n,
+            rows_considered=concentration.rows_considered,
+            rows_classified=concentration.rows_classified,
+            dominant_end_market=concentration.dominant_end_market,
+            dominant_count=concentration.dominant_count,
+            breakdown=concentration.breakdown,
+            summary=concentration.summary_line,
         ),
         rows=rows,
     )
@@ -253,8 +321,7 @@ def refresh_screen(limit: int = Query(50, ge=1, le=500)) -> SupplyScreenResponse
 @router.get("/constraints", response_model=list[ConstraintOut])
 def get_constraints() -> list[ConstraintOut]:
     """The Layer B constraint registry: each entry with `is_stale` and its
-    ticker exposures. Today this is exactly one entry (the NAND historical
-    precedent) — see `configs/supply_constraints.yaml`."""
+    ticker exposures — see `configs/supply_constraints.yaml`."""
     constraints = load_constraints()
     return [
         ConstraintOut(
@@ -266,6 +333,7 @@ def get_constraints() -> list[ConstraintOut]:
             expansion_lead_months=c.expansion_lead_months,
             demand_driver=c.demand_driver,
             capacity_history=c.capacity_history,
+            counter_evidence=c.counter_evidence,
             confidence=c.confidence,
             last_reviewed=c.last_reviewed,
             is_stale=c.is_stale,

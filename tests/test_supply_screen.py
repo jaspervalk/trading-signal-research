@@ -287,6 +287,53 @@ def test_missing_ppe_is_recorded_with_a_reason(monkeypatch, tmp_path):
     assert "PP&E" in r.reasons[0]
 
 
+# --- Layer C trigger wiring (Change 4) ---------------------------------------
+
+
+def test_trigger_is_attached_to_a_fully_scored_result(monkeypatch, tmp_path):
+    """`_full_facts()` only has 4 quarters -- below the trigger's own
+    6-quarter floor -- so the wiring should surface an `insufficient_history`
+    trigger, not `None` and not a crash."""
+    monkeypatch.setattr("app.supply.screen.ticker_to_cik", lambda: {"AAA": 1})
+    monkeypatch.setattr("app.supply.screen.company_facts", lambda cik: _full_facts())
+
+    results = run_supply_screen(
+        ["AAA"],
+        market_caps={"AAA": 1000.0},
+        analyst_counts={},
+        thresholds=LENIENT_THRESHOLDS,
+        cache_dir=tmp_path,
+    )
+    r = results[0]
+    assert r.passed is True
+    assert r.trigger is not None
+    assert r.trigger.status == "insufficient_history"
+    assert r.trigger.quarters_of_history == 4
+
+
+def test_trigger_is_attached_even_when_market_cap_is_missing(monkeypatch, tmp_path):
+    """The trigger only needs the margin series -- it should still be
+    computed for a ticker that fails Layer A on an unrelated input."""
+    monkeypatch.setattr("app.supply.screen.ticker_to_cik", lambda: {"EEE": 2})
+    monkeypatch.setattr("app.supply.screen.company_facts", lambda cik: _full_facts())
+
+    results = run_supply_screen(
+        ["EEE"], market_caps={}, analyst_counts={}, thresholds=LENIENT_THRESHOLDS,
+        cache_dir=tmp_path,
+    )
+    r = results[0]
+    assert r.metrics is None
+    assert r.trigger is not None  # computed independently of market cap
+
+
+def test_trigger_is_none_for_a_ticker_with_no_cik(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.supply.screen.ticker_to_cik", lambda: {})
+    results = run_supply_screen(
+        ["ZZZ"], market_caps={}, analyst_counts={}, cache_dir=tmp_path
+    )
+    assert results[0].trigger is None
+
+
 def test_ticker_case_is_not_significant_for_lookups(monkeypatch, tmp_path):
     """`market_caps`/`analyst_counts` dicts are keyed however the caller
     likes; a lowercase ticker must still find an uppercase-keyed cap."""

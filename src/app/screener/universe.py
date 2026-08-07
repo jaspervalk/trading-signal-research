@@ -3,8 +3,13 @@
 Reads `configs/screen_universe.csv` (versionable, hand-editable) and
 optionally refreshes it from Wikipedia's S&P 500 + Nasdaq 100 tables.
 
-CSV schema:  ticker,name,sector,source
+CSV schema:  ticker,name,sector,source[,end_market]
 - `source` is "sp500", "ndx", or "both" — informational only.
+- `end_market` is optional and, when present, deliberately coarser than
+  `sector` (e.g. TiO2 pigment and PVC pipe are different sectors but the
+  same end market, "construction"). Only `configs/supply_universe.csv`
+  populates it today; `screen_universe.csv` leaves it blank. See
+  `app.supply.concentration` for what consumes it.
 """
 
 from __future__ import annotations
@@ -31,6 +36,10 @@ class UniverseEntry:
     name: str = ""
     sector: str = ""
     source: str = ""  # "sp500" | "ndx" | "both"
+    # Deliberately coarser than `sector` — see module docstring. Blank means
+    # "not classified," never "classified as blank." Populated today only in
+    # configs/supply_universe.csv.
+    end_market: str = ""
 
 
 def load_universe(
@@ -58,6 +67,7 @@ def load_universe(
                 name=(row.get("name") or "").strip(),
                 sector=(row.get("sector") or "").strip(),
                 source=(row.get("source") or "").strip(),
+                end_market=(row.get("end_market") or "").strip(),
             )
             if sector and entry.sector.lower() != sector.lower():
                 continue
@@ -145,11 +155,19 @@ def write_universe(entries: list[UniverseEntry], path: Path = DEFAULT_UNIVERSE_P
     """Persist entries to CSV. Overwrites."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["ticker", "name", "sector", "source"])
+        writer = csv.DictWriter(
+            f, fieldnames=["ticker", "name", "sector", "source", "end_market"]
+        )
         writer.writeheader()
         for e in entries:
             writer.writerow(
-                {"ticker": e.ticker, "name": e.name, "sector": e.sector, "source": e.source}
+                {
+                    "ticker": e.ticker,
+                    "name": e.name,
+                    "sector": e.sector,
+                    "source": e.source,
+                    "end_market": e.end_market,
+                }
             )
     log.info("screener.universe.written", path=str(path), n=len(entries))
 

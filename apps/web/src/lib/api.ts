@@ -859,14 +859,26 @@ export type SupplyMetricsOut = {
   caveats: string[];
 };
 
+export type SupplyTriggerOut = {
+  status: "insufficient_history" | "not_armed" | "armed" | "firing" | "confirmed";
+  expansion_streak: number;
+  prior_decline_pp: number | null;
+  detail: string;
+  draws_attention: boolean;
+};
+
 export type SupplyScreenRow = {
   ticker: string;
   sector: string | null;
+  // Deliberately coarser than `sector` — see apps/api's supply router.
+  // Reporting only; never affects `passed` or row order.
+  end_market: string | null;
   cik: number | null;
   passed: boolean;
   reasons: string[];
   dropped_implausible: number;
   metrics: SupplyMetricsOut | null;
+  trigger: SupplyTriggerOut | null;
 };
 
 export type SupplyScreenCoverage = {
@@ -876,9 +888,20 @@ export type SupplyScreenCoverage = {
   passed: number;
 };
 
+export type SupplyEndMarketConcentration = {
+  top_n: number;
+  rows_considered: number;
+  rows_classified: number;
+  dominant_end_market: string | null;
+  dominant_count: number;
+  breakdown: Record<string, number>;
+  summary: string;
+};
+
 export type SupplyScreenResponse = {
   as_of: string;
   coverage: SupplyScreenCoverage;
+  concentration: SupplyEndMarketConcentration;
   rows: SupplyScreenRow[];
 };
 
@@ -892,12 +915,17 @@ export type SupplyConstraintExposure = {
 export type SupplyConstraint = {
   id: string;
   market: string;
-  deficit_pct: number;
+  // Optional: a constraint may document real capacity destruction with no
+  // credible PROJECTED deficit (e.g. the TiO2 entry — confidence=low
+  // precisely because the deficit and counter-evidence haven't resolved).
+  deficit_pct: number | null;
   deficit_source: string;
   deficit_horizon: string;
-  expansion_lead_months: number;
+  expansion_lead_months: number | null;
   demand_driver: string;
   capacity_history: string;
+  // Evidence that argues AGAINST the thesis above, in the same entry.
+  counter_evidence: string | null;
   confidence: "high" | "medium" | "low";
   last_reviewed: string;
   is_stale: boolean;

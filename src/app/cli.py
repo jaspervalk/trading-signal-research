@@ -923,14 +923,57 @@ def _fetch_supply_market_data(
 
 
 def _supply_screen_sort_key(result):  # noqa: ANN001, ANN202 - local helper
-    """Rank by earnings_torque descending — "how much gross profit a return
-    to their own historical peak would add relative to market cap," per the
-    plan's stated goal for this screen. Rows without a computable torque
-    (no metrics, or insufficient history) sort last, ticker A-Z beneath
-    that, so the table still reads as a single deterministic ordering
-    instead of dumping unscored rows in input order at the end."""
-    torque = result.metrics.earnings_torque if result.metrics is not None else None
-    return (torque is None, -(torque or 0.0), result.ticker)
+    """Rank passing rows first, then near-misses (split by failure kind),
+    then rows with no computable metrics — never by `-earnings_torque`
+    alone.
+
+    `passes()` (`app.supply.metrics`) already encodes the correct gate;
+    sorting purely by torque silently overrides it, and that's not an
+    incidental bug — it's structural. `earnings_torque = margin_headroom *
+    ttm_revenue / market_cap`, and a distressed company's compressed market
+    cap inflates its own torque, so ranking on torque alone systematically
+    selects for companies that cannot survive to benefit from the recovery
+    the screen is trying to measure (e.g. a name with 0.6 quarters of cash
+    runway out-torquing, and outranking, one with 25).
+
+    This is a tiered SORT KEY, not a composite score — every metric stays
+    visible on its own column; nothing here is blended into one number.
+
+    Tiers (ascending = better rank):
+      0. passed              — cleared every Layer A criterion.
+      1. near-miss, other    — has metrics, failed, but not on
+                                survivability alone (includes
+                                insufficient-history rows, which can't even
+                                be evaluated for survivability).
+      2. near-miss, survival — has metrics, failed, and the ONLY failing
+                                reason is `survivability_quarters_min`: a
+                                company that cannot outlast the cycle is
+                                disqualified in kind, not in degree, so it
+                                sinks below an equally-failing name that
+                                fails for a different reason.
+      3. unscored             — no computable metrics at all (no CIK, fetch
+                                failure, too little history for even a TTM
+                                figure).
+
+    Within a tier: `-earnings_torque` descending (rows with no torque value
+    sort to the bottom of their own tier), ticker A-Z as the final,
+    deterministic tie-break.
+    """
+    m = result.metrics
+    torque = m.earnings_torque if m is not None else None
+
+    if m is None:
+        tier = 3
+    elif result.passed:
+        tier = 0
+    else:
+        reasons = result.reasons or []
+        survivability_only = bool(reasons) and all(
+            r.startswith("survivability_quarters=") for r in reasons
+        )
+        tier = 2 if survivability_only else 1
+
+    return (tier, torque is None, -(torque or 0.0), result.ticker)
 
 
 @app.command(name="supply-screen")
@@ -955,6 +998,7 @@ def supply_screen(
     from pathlib import Path
 
     from app.screener.universe import DEFAULT_UNIVERSE_PATH, load_universe
+    from app.supply.concentration import compute_end_market_concentration
     from app.supply.screen import run_supply_screen
 
     universe_path_p = Path(universe_path) if universe_path else DEFAULT_UNIVERSE_PATH
@@ -964,6 +1008,7 @@ def supply_screen(
         raise typer.Exit(code=1)
 
     tickers = [e.ticker for e in universe]
+    end_market_by_ticker = {e.ticker.upper(): (e.end_market or None) for e in universe}
     market_caps, analyst_counts = _fetch_supply_market_data(tickers)
 
     results = run_supply_screen(tickers, market_caps=market_caps, analyst_counts=analyst_counts)
@@ -975,6 +1020,13 @@ def supply_screen(
     ordered = sorted(results, key=_supply_screen_sort_key)
     shown = ordered[:limit]
 
+    # REPORTING ONLY — see app.supply.concentration module docstring. This
+    # never touches `ordered`/`shown`; it just reads off the ranking already
+    # decided above.
+    concentration = compute_end_market_concentration(
+        [r.ticker for r in ordered], end_market_by_ticker
+    )
+
     if output_json:
         import json as json_module
 
@@ -985,13 +1037,32 @@ def supply_screen(
                 "had_sufficient_history": len(had_history),
                 "passed": len(passed),
             },
+            "end_market_concentration": {
+                "top_n": concentration.top_n,
+                "dominant_end_market": concentration.dominant_end_market,
+                "dominant_count": concentration.dominant_count,
+                "rows_classified": concentration.rows_classified,
+                "breakdown": concentration.breakdown,
+                "summary": concentration.summary_line,
+            },
             "results": [
                 {
                     "ticker": r.ticker,
                     "cik": r.cik,
                     "passed": r.passed,
                     "reasons": r.reasons,
+                    "end_market": end_market_by_ticker.get(r.ticker.upper()),
                     "metrics": r.metrics.model_dump() if r.metrics is not None else None,
+                    "trigger": (
+                        {
+                            "status": r.trigger.status,
+                            "expansion_streak": r.trigger.expansion_streak,
+                            "prior_decline_pp": r.trigger.prior_decline_pp,
+                            "detail": r.trigger.detail,
+                        }
+                        if r.trigger is not None
+                        else None
+                    ),
                 }
                 for r in shown
             ],
@@ -1007,15 +1078,17 @@ def supply_screen(
 
     typer.echo("")
     header = (
-        f"  {'ticker':<6}  {'passed':<6}  {'gm_pct':>7}  {'headroom':>9}  "
+        f"  {'ticker':<6}  {'end_market':<18}  {'passed':<6}  {'gm_pct':>7}  {'headroom':>9}  "
         f"{'torque':>7}  {'cap_int':>8}  {'surviv_q':>9}  {'qtrs':>5}"
     )
     typer.echo(header)
     typer.echo(f"  {'-' * (len(header) - 2)}")
     for r in shown:
         m = r.metrics
+        end_market = end_market_by_ticker.get(r.ticker.upper()) or "—"
         line = (
             f"  {r.ticker:<6}  "
+            f"{end_market:<18}  "
             f"{('yes' if r.passed else 'no'):<6}  "
             f"{pct(m.gm_percentile) if m else '—':>7}  "
             f"{num(m.margin_headroom_pp, 1) if m else '—':>9}  "
@@ -1027,10 +1100,21 @@ def supply_screen(
         typer.echo(line)
         if not r.passed and r.reasons:
             typer.echo(f"        near-miss: {'; '.join(r.reasons)}")
+        # Layer C: only firing/confirmed draw attention — armed and
+        # not_armed stay quiet, per the brief (`InflectionTrigger.draws_attention`).
+        if r.trigger is not None and r.trigger.draws_attention:
+            typer.echo(
+                f"        TRIGGER [{r.trigger.status.upper()}]: {r.trigger.detail}"
+            )
     typer.echo("")
     typer.echo(
         f"  coverage: universe={len(results)}  resolved_to_cik={len(resolved)}  "
         f"had_sufficient_history={len(had_history)}  passed={len(passed)}"
+    )
+    typer.echo(
+        f"  end-market concentration: {concentration.summary_line}  "
+        f"(classified {concentration.rows_classified}/{concentration.rows_considered} "
+        f"in top {concentration.top_n}; reporting only — never reorders the table above)"
     )
     typer.echo("")
 

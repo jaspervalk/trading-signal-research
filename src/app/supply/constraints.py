@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -69,12 +69,29 @@ class Constraint(BaseModel):
 
     id: str
     market: str
-    deficit_pct: float
+    # Optional: a constraint can document real capacity destruction with no
+    # credible PROJECTED deficit (e.g. the 2026-08-06 TiO2 entry — Western
+    # capacity is closing but Chinese exports are filling the gap, so there
+    # is no honest deficit number to put here). `deficit_source` stays
+    # mandatory regardless: a null deficit_pct still needs a dated source
+    # for whatever capacity/price evidence IS being claimed.
+    deficit_pct: Optional[float] = None
     deficit_source: str
     deficit_horizon: str
-    expansion_lead_months: float
+    # Optional for the same reason as deficit_pct: "how long until new
+    # capacity comes online" presupposes a deficit to close. Null when
+    # deficit_pct is null; Layer B (`app.supply.layer_b`) treats either
+    # being absent as "cannot score," not as a zero.
+    expansion_lead_months: Optional[float] = None
     demand_driver: str
     capacity_history: str
+    # Counter-evidence that argues AGAINST the thesis above, in the same
+    # entry — e.g. the 2026-08-06 TiO2 entry's Chinese oversupply/export
+    # growth data, which is exactly why that entry's confidence is "low"
+    # despite real documented capacity destruction. Optional: most entries
+    # (e.g. the NAND precedent) don't need a dedicated counter-evidence
+    # field because the historical outcome already speaks for itself.
+    counter_evidence: Optional[str] = None
     confidence: Confidence
     last_reviewed: date
     exposures: list[ConstraintExposure] = Field(default_factory=list)

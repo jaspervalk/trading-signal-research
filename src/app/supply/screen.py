@@ -56,6 +56,7 @@ from app.supply.metrics import (
     load_thresholds,
     passes,
 )
+from app.supply.triggers import InflectionTrigger, evaluate_gross_margin_inflection
 
 log = get_logger(__name__)
 
@@ -88,6 +89,13 @@ class ScreenResult:
     # `metrics.gm_percentile` / `margin_headroom_pp`. 0 for tickers that
     # never reached fundamentals assembly (no CIK, fetch failure, etc).
     dropped_implausible: int = 0
+    # Layer C (`app.supply.triggers`): gross-margin inflection status.
+    # `None` only for tickers that never got far enough to build a
+    # `MarginHistory` at all (no CIK, fetch failure) — every ticker with a
+    # margin history gets a trigger evaluation, even ones that failed
+    # Layer A on market cap or PP&E, since the trigger doesn't depend on
+    # either of those inputs.
+    trigger: Optional[InflectionTrigger] = None
 
 
 def _parse_date(value: str) -> date | None:
@@ -183,6 +191,11 @@ def _screen_one(
         edgar_cache.put(cik, facts, base_dir=cache_dir, now=now)
 
     margin_history = build_margin_history(facts)
+    # Layer C trigger only needs the margin series itself — independent of
+    # TTM/market-cap/PP&E computability below, so evaluate it once here and
+    # carry it on every ScreenResult returned from this point on.
+    trigger = evaluate_gross_margin_inflection(margin_history.gross_margins)
+
     ttm = _ttm_from_margin_history(margin_history)
     if ttm is None:
         return ScreenResult(
@@ -193,6 +206,7 @@ def _screen_one(
                 f"{margin_history.quarters} quarters (need >= {TTM_QUARTERS})"
             ],
             dropped_implausible=margin_history.dropped_implausible,
+            trigger=trigger,
         )
     ttm_gross_margin, ttm_revenue = ttm
 
@@ -203,6 +217,7 @@ def _screen_one(
             cik=cik,
             reasons=["missing or non-positive market cap"],
             dropped_implausible=margin_history.dropped_implausible,
+            trigger=trigger,
         )
 
     ppe = _latest_instant(facts, PPE)
@@ -212,6 +227,7 @@ def _screen_one(
             cik=cik,
             reasons=["no PP&E reported under any known concept"],
             dropped_implausible=margin_history.dropped_implausible,
+            trigger=trigger,
         )
 
     cash = _latest_instant(facts, CASH) or 0.0
@@ -242,6 +258,7 @@ def _screen_one(
         passed=ok,
         reasons=reasons,
         dropped_implausible=margin_history.dropped_implausible,
+        trigger=trigger,
     )
 
 

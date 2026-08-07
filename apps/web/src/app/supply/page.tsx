@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { MarginHistoryChart } from "@/components/MarginHistoryChart";
-import { api, ApiError, type SupplyConstraint, type SupplyScreenRow } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type SupplyConstraint,
+  type SupplyEndMarketConcentration,
+  type SupplyScreenRow,
+} from "@/lib/api";
 import { cn, fmtDateTime } from "@/lib/utils";
 
 /**
@@ -78,6 +84,8 @@ export default function SupplyScreenerPage() {
       {screenError && (
         <ErrorBanner error={screenError} fallback="Could not load the supply screen." />
       )}
+
+      {screen?.concentration && <ConcentrationBanner concentration={screen.concentration} />}
 
       <RankedWatchlist
         rows={screen?.rows ?? []}
@@ -170,6 +178,43 @@ function ReRunBar({
 }
 
 // ---------------------------------------------------------------------------
+// End-market concentration banner — REPORTING ONLY. Never reorders or
+// weights the ranked watchlist below; see apps/api's supply router /
+// app.supply.concentration for why end_market is deliberately coarser than
+// sector (TiO2 pigment and PVC pipe are different sectors, same end market).
+
+function ConcentrationBanner({ concentration: c }: { concentration: SupplyEndMarketConcentration }) {
+  const isConcentrated = c.dominant_end_market !== null && c.dominant_count >= 2;
+  return (
+    <section
+      className={cn(
+        "border px-4 py-3 flex items-center justify-between gap-4 flex-wrap",
+        isConcentrated
+          ? "border-[var(--warning)]/40 bg-[var(--warning)]/5"
+          : "border-[var(--border)] bg-[var(--panel)]",
+      )}
+    >
+      <div className="text-[11px] normal-case">
+        <span
+          className={cn(
+            "uppercase tracking-wider text-[10px] mr-2",
+            isConcentrated ? "text-[var(--warning)]" : "text-[var(--muted-2)]",
+          )}
+        >
+          end-market concentration
+        </span>
+        <span className={isConcentrated ? "text-[var(--foreground)] font-medium" : "text-[var(--muted-foreground)]"}>
+          {c.summary}
+        </span>
+        <span className="text-[var(--muted-2)] ml-2">
+          (classified {c.rows_classified}/{c.rows_considered} — reporting only, never reorders the table)
+        </span>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Section 1: ranked watchlist
 
 function RankedWatchlist({
@@ -214,6 +259,7 @@ function RankedWatchlist({
                 <Th>#</Th>
                 <Th>Ticker</Th>
                 <Th>Sector</Th>
+                <Th>End market</Th>
                 <Th right>Torque</Th>
                 <Th right>GM %ile</Th>
                 <Th right>Headroom pp</Th>
@@ -223,6 +269,7 @@ function RankedWatchlist({
                 <Th right>Analysts</Th>
                 <Th right>Coverage×</Th>
                 <Th>Status</Th>
+                <Th>Trigger</Th>
               </tr>
             </thead>
             <tbody>
@@ -268,6 +315,7 @@ function RowGroup({
         <Td className="text-[var(--muted-2)]">{rank}</Td>
         <Td className="font-medium">{row.ticker}</Td>
         <Td className="text-[var(--muted-foreground)]">{row.sector ?? "—"}</Td>
+        <Td className="text-[var(--muted-foreground)] normal-case">{row.end_market ?? "—"}</Td>
         <Td right className={row.passed ? "text-[var(--positive)]" : ""}>
           {num(m?.earnings_torque, 2)}
         </Td>
@@ -283,10 +331,13 @@ function RowGroup({
         <Td>
           <StatusPill row={row} />
         </Td>
+        <Td>
+          <TriggerPill trigger={row.trigger} />
+        </Td>
       </tr>
       {expanded && (
         <tr className="border-b border-[var(--hairline-2)] bg-[color:rgba(255,255,255,0.015)]">
-          <td colSpan={12} className="px-2.5 py-3">
+          <td colSpan={14} className="px-2.5 py-3">
             <RowDetail row={row} />
           </td>
         </tr>
@@ -334,6 +385,20 @@ function RowDetail({ row }: { row: SupplyScreenRow }) {
           ))}
         </ul>
       )}
+      {row.trigger && (
+        <div>
+          <span className="uppercase tracking-wider text-[10px] text-[var(--muted-2)] mr-1">
+            Layer C — gross-margin inflection:
+          </span>
+          <span
+            className={cn(
+              row.trigger.draws_attention ? "text-[var(--positive)]" : "text-[var(--muted-foreground)]",
+            )}
+          >
+            [{row.trigger.status}] {row.trigger.detail}
+          </span>
+        </div>
+      )}
       <p className="text-[10px] text-[var(--info)]">
         Selected below — see candidate detail for gross-margin history.
       </p>
@@ -356,6 +421,27 @@ function StatusPill({ row }: { row: SupplyScreenRow }) {
   return <span className="uppercase tracking-wider text-[var(--muted-2)]">unresolved</span>;
 }
 
+function TriggerPill({ trigger }: { trigger: SupplyScreenRow["trigger"] }) {
+  // Only firing/confirmed draw attention — armed and not_armed stay quiet,
+  // per the brief (mirrors `InflectionTrigger.draws_attention`).
+  if (!trigger || !trigger.draws_attention) {
+    return <span className="text-[var(--muted-2)]">—</span>;
+  }
+  return (
+    <span
+      className={cn(
+        "uppercase tracking-wider px-1.5 py-0.5 border",
+        trigger.status === "confirmed"
+          ? "text-[var(--positive)] border-[var(--positive)]"
+          : "text-[var(--info)] border-[var(--info)]",
+      )}
+      title={trigger.detail}
+    >
+      {trigger.status}
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Section 2: constraint registry
 
@@ -366,11 +452,12 @@ function ConstraintRegistry({ constraints }: { constraints: SupplyConstraint[] }
         <div>
           <h2 className="text-sm tracking-tight">Constraint registry</h2>
           <p className="text-[11px] text-[var(--muted-foreground)] mt-1 normal-case max-w-3xl">
-            Layer B currently tracks exactly ONE constraint — a historical NAND
-            precedent used to validate the supply-constraint → price mechanism —
-            so exposures below touch only WDC and MU. This is deliberately
-            sparse: adding another entry requires an independently checkable,
-            dated source (no source, no constraint).
+            Hand-curated, one entry per named supply-constraint thesis. Kept
+            deliberately sparse: adding an entry requires an independently
+            checkable, dated source (no source, no constraint) — and, as the
+            TiO2 entry below shows, a low-confidence thesis with real
+            counter-evidence is recorded as such rather than left out or
+            inflated.
           </p>
         </div>
         <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted-2)] whitespace-nowrap">
@@ -402,7 +489,11 @@ function ConstraintCard({ constraint: c }: { constraint: SupplyConstraint }) {
         <div>
           <span className="font-medium">{c.market}</span>
           <span className="text-[var(--muted-foreground)] ml-2 text-[11px]">
-            deficit {(c.deficit_pct * 100).toFixed(1)}% · {c.deficit_horizon}
+            {c.deficit_pct === null
+              ? "no credible projected deficit"
+              : `deficit ${(c.deficit_pct * 100).toFixed(1)}%`}
+            {" · "}
+            {c.deficit_horizon}
           </span>
         </div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider">
@@ -422,10 +513,19 @@ function ConstraintCard({ constraint: c }: { constraint: SupplyConstraint }) {
       </p>
       <p className="text-[11px] text-[var(--muted-foreground)] normal-case">
         <span className="text-[var(--muted-2)] uppercase tracking-wider text-[10px] mr-1">lead time</span>
-        {c.expansion_lead_months} months expansion lead ·{" "}
+        {c.expansion_lead_months === null ? "n/a — no deficit to close" : `${c.expansion_lead_months} months expansion lead`}
+        {" · "}
         <span className="text-[var(--muted-2)] uppercase tracking-wider text-[10px] mr-1 ml-2">driver</span>
         {c.demand_driver}
       </p>
+      {c.counter_evidence && (
+        <p className="text-[11px] text-[var(--warning)] normal-case border-l-2 border-[var(--warning)]/40 pl-2">
+          <span className="text-[var(--muted-2)] uppercase tracking-wider text-[10px] mr-1 block">
+            counter-evidence (why confidence is {c.confidence})
+          </span>
+          {c.counter_evidence}
+        </p>
+      )}
 
       <table className="w-full text-[11px] font-mono-jb mt-2">
         <thead>
