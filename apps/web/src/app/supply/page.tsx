@@ -60,7 +60,7 @@ export default function SupplyScreenerPage() {
   }
 
   return (
-    <div className="space-y-6 font-mono-jb">
+    <div className="space-y-6 font-mono-jb min-w-0 max-w-full">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Supply-constraint screener</h1>
         <p className="text-xs uppercase tracking-wider text-[var(--muted-foreground)] mt-1.5 max-w-3xl normal-case">
@@ -252,11 +252,12 @@ function RankedWatchlist({
       )}
 
       {!loading && rows.length > 0 && (
-        <div className="overflow-x-auto bg-[var(--panel)] border border-[var(--border)]">
-          {/* w-max, not w-full: with nowrap cells a full-width table is forced to the
-            container and the right-hand columns (status, trigger) clip instead of
-            scrolling. Sizing to content lets the overflow-x-auto wrapper do its job. */}
-        <table className="min-w-full w-max font-mono-jb text-[11px]">
+        <div className="overflow-x-auto min-w-0 max-w-full bg-[var(--panel)] border border-[var(--border)]">
+          {/* min-w-0 and max-w-full are load-bearing: without them this wrapper
+              inherits min-width:auto from its parent, grows to fit the table, and
+              the PAGE scrolls sideways instead of the table doing so. w-max on the
+              table lets the nowrap columns keep their width and scroll within. */}
+          <table className="w-max min-w-full font-mono-jb text-[11px]">
             <thead>
               <tr className="text-left uppercase tracking-wider text-[var(--muted-foreground)] border-b border-[var(--hairline-2)]">
                 <Th>#</Th>
@@ -545,7 +546,7 @@ function ConstraintCard({ constraint: c }: { constraint: SupplyConstraint }) {
               <Td className="font-medium">{e.ticker}</Td>
               <Td right>{(e.revenue_exposure_pct * 100).toFixed(0)}%</Td>
               <Td>{e.is_pure_play ? "yes" : "no"}</Td>
-              <Td className="text-[var(--muted-foreground)] normal-case max-w-[40ch]">
+              <Td wrap className="text-[var(--muted-foreground)] normal-case max-w-[60ch]">
                 {e.exposure_source}
               </Td>
             </tr>
@@ -621,14 +622,27 @@ function Th({ children, right }: { children: React.ReactNode; right?: boolean })
 function Td({
   children,
   right,
+  wrap,
   className,
 }: {
   children: React.ReactNode;
   right?: boolean;
+  /** Prose cells must wrap. nowrap is correct for numbers and disastrous for a
+   *  sentence: a single unwrapped source note stretched this table to 2074px
+   *  and took the whole page's horizontal scroll with it. max-width alone
+   *  cannot fix that, because nowrap wins. */
+  wrap?: boolean;
   className?: string;
 }) {
   return (
-    <td className={cn("py-2 px-2.5 whitespace-nowrap tabular-nums", right && "text-right", className)}>
+    <td
+      className={cn(
+        "py-2 px-2.5",
+        wrap ? "whitespace-normal break-words align-top" : "whitespace-nowrap tabular-nums",
+        right && "text-right",
+        className,
+      )}
+    >
       {children}
     </td>
   );
